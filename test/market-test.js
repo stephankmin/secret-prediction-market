@@ -134,6 +134,7 @@ describe("SecretPredictionMarket", () => {
 
   describe("claimWinnings", () => {
     let wager;
+    let choice;
     let commitInput;
     let playerCommitTransaction;
 
@@ -154,14 +155,13 @@ describe("SecretPredictionMarket", () => {
 
     describe("when event occurs and 'Yes' reveal attempts to claim", () => {
       let winnings;
-      let choice;
 
       before(async () => {
         wager = ethers.utils.parseEther("1.0");
         choice = 1;
 
         commitInput = await ethers.utils.keccak256(
-          abiCoder.encode([deployer.address, 1, "test"])
+          abiCoder.encode([deployer.address, choice, "test"])
         );
 
         playerCommitTransaction = await SecretPredictionMarket.commitChoice(
@@ -200,10 +200,59 @@ describe("SecretPredictionMarket", () => {
       });
     });
 
-    it("should revert if player's choice was incorrect", async () => {
-      await expect(secretpredictionmarket.claimWinnings()).to.be.revertedWith(
-        "Invalid claim"
-      );
+    describe("when event occurs and 'No' reveal attempts to claim", () => {
+      before(async () => {
+        wager = ethers.utils.parseEther("1.0");
+        choice = 2;
+
+        commitInput = await ethers.utils.keccak256(
+          abiCoder.encode([deployer.address, choice, "test"])
+        );
+
+        playerCommitTransaction = await SecretPredictionMarket.commitChoice(
+          commitInput,
+          { value: wager }
+        );
+        await playerCommitTransaction.wait();
+
+        reportEventOccured = await secretpredictionmarket.reportEvent();
+        await reportEventOccured.wait();
+
+        noReveal = await secretpredictionmarket.revealChoice();
+        await noReveal.wait();
+      });
+
+      it("should revert", async () => {
+        await expect(secretpredictionmarket.claimWinnings()).to.be.revertedWith(
+          "Invalid claim"
+        );
+      });
+    });
+
+    describe("when event does not occur and 'Yes' reveal attempts to claim", () => {
+      before(async () => {
+        wager = ethers.utils.parseEther("1.0");
+        choice = 2;
+
+        commitInput = await ethers.utils.keccak256(
+          abiCoder.encode([deployer.address, choice, "test"])
+        );
+
+        playerCommitTransaction = await SecretPredictionMarket.commitChoice(
+          commitInput,
+          { value: wager }
+        );
+        await playerCommitTransaction.wait();
+
+        yesReveal = await secretpredictionmarket.revealChoice();
+        await yesReveal.wait();
+      });
+
+      it("should revert", async () => {
+        await expect(secretpredictionmarket.claimWinnings()).to.be.revertedWith(
+          "Invalid claim"
+        );
+      });
     });
   });
 });

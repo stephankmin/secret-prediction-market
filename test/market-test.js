@@ -37,6 +37,8 @@ describe("SecretPredictionMarket", () => {
       await playerCommitTransaction.wait();
     });
 
+    it("should revert if commit deadline has passed", async () => {});
+
     it("should store PredictionCommit for player in players mapping", async () => {
       const playerCommitStruct = await secretpredictionmarket.players(
         deployer.address
@@ -151,107 +153,151 @@ describe("SecretPredictionMarket", () => {
       );
       secretpredictionmarket = await SecretPredictionMarket.deploy();
       await secretpredictionmarket.deployed();
+
+      wager = ethers.utils.parseEther("1.0");
     });
 
-    describe("when event occurs and 'Yes' reveal attempts to claim", () => {
-      let winnings;
+    describe("when event occurs", () => {
+      describe("when player with 'Yes' reveal attempts to claim", () => {
+        let winnings;
 
-      before(async () => {
-        wager = ethers.utils.parseEther("1.0");
-        choice = 1;
+        before(async () => {
+          choice = 1;
 
-        commitInput = await ethers.utils.keccak256(
-          abiCoder.encode([deployer.address, choice, "test"])
-        );
+          commitInput = await ethers.utils.keccak256(
+            abiCoder.encode([deployer.address, choice, "test"])
+          );
 
-        playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-          commitInput,
-          { value: wager }
-        );
-        await playerCommitTransaction.wait();
+          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
+            commitInput,
+            { value: wager }
+          );
+          await playerCommitTransaction.wait();
 
-        reportEventOccured = await secretpredictionmarket.reportEvent();
-        await reportEventOccured.wait();
+          reportEventOccured = await secretpredictionmarket.reportEvent();
+          await reportEventOccured.wait();
 
-        yesReveal = await secretpredictionmarket.revealChoice();
-        await yesReveal.wait();
+          yesReveal = await secretpredictionmarket.revealChoice();
+          await yesReveal.wait();
+        });
+
+        it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
+          claimTransaction = await secretpredictionmarket.claimWinnings();
+          await claimTransaction.wait();
+
+          const playerAddressBalance = await provider.getBalance(
+            deployer.address
+          );
+
+          winnings =
+            wager +
+            (1 / secretpredictionmarket.numOfWinningReveals()) *
+              secretpredictionmarket.losingPot();
+
+          expect(playerAddressBalance).to.eq(winnings);
+        });
+
+        it("should emit Payout event", async () => {
+          expect(claimTransaction)
+            .to.emit(secretpredictionmarket, "Payout")
+            .withArgs(deployer.address, winnings);
+        });
       });
 
-      it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
-        claimTransaction = await secretpredictionmarket.claimWinnings();
-        await claimTransaction.wait();
+      describe("when player with 'No' reveal attempts to claim", () => {
+        before(async () => {
+          choice = 2;
 
-        const playerAddressBalance = await provider.getBalance(
-          deployer.address
-        );
+          commitInput = await ethers.utils.keccak256(
+            abiCoder.encode([deployer.address, choice, "test"])
+          );
 
-        winnings =
-          wager +
-          (1 / secretpredictionmarket.numOfWinningReveals()) *
-            secretpredictionmarket.losingPot();
+          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
+            commitInput,
+            { value: wager }
+          );
+          await playerCommitTransaction.wait();
 
-        expect(playerAddressBalance).to.eq(winnings);
-      });
+          reportEventOccured = await secretpredictionmarket.reportEvent();
+          await reportEventOccured.wait();
 
-      it("should emit WinningsClaimed event", async () => {
-        expect(claimTransaction)
-          .to.emit(secretpredictionmarket, "WinningsClaimed")
-          .withArgs(choice, winnings);
+          noReveal = await secretpredictionmarket.revealChoice();
+          await noReveal.wait();
+        });
+
+        it("should revert", async () => {
+          await expect(
+            secretpredictionmarket.claimWinnings()
+          ).to.be.revertedWith("Invalid claim");
+        });
       });
     });
 
-    describe("when event occurs and 'No' reveal attempts to claim", () => {
-      before(async () => {
-        wager = ethers.utils.parseEther("1.0");
-        choice = 2;
+    describe("when event does not occur", () => {
+      describe("when player with 'Yes' reveal attempts to claim", () => {
+        before(async () => {
+          choice = 1;
 
-        commitInput = await ethers.utils.keccak256(
-          abiCoder.encode([deployer.address, choice, "test"])
-        );
+          commitInput = await ethers.utils.keccak256(
+            abiCoder.encode([deployer.address, choice, "test"])
+          );
 
-        playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-          commitInput,
-          { value: wager }
-        );
-        await playerCommitTransaction.wait();
+          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
+            commitInput,
+            { value: wager }
+          );
+          await playerCommitTransaction.wait();
 
-        reportEventOccured = await secretpredictionmarket.reportEvent();
-        await reportEventOccured.wait();
+          yesReveal = await secretpredictionmarket.revealChoice();
+          await yesReveal.wait();
+        });
 
-        noReveal = await secretpredictionmarket.revealChoice();
-        await noReveal.wait();
+        it("should revert", async () => {
+          await expect(
+            secretpredictionmarket.claimWinnings()
+          ).to.be.revertedWith("Invalid claim");
+        });
       });
 
-      it("should revert", async () => {
-        await expect(secretpredictionmarket.claimWinnings()).to.be.revertedWith(
-          "Invalid claim"
-        );
-      });
-    });
+      describe("when player with 'No' reveal attempts to claim", () => {
+        before(async () => {
+          choice = 2;
 
-    describe("when event does not occur and 'Yes' reveal attempts to claim", () => {
-      before(async () => {
-        wager = ethers.utils.parseEther("1.0");
-        choice = 2;
+          commitInput = await ethers.utils.keccak256(
+            abiCoder.encode([deployer.address, choice, "test"])
+          );
 
-        commitInput = await ethers.utils.keccak256(
-          abiCoder.encode([deployer.address, choice, "test"])
-        );
+          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
+            commitInput,
+            { value: wager }
+          );
+          await playerCommitTransaction.wait();
 
-        playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-          commitInput,
-          { value: wager }
-        );
-        await playerCommitTransaction.wait();
+          noReveal = await secretpredictionmarket.revealChoice();
+          await noReveal.wait();
+        });
 
-        yesReveal = await secretpredictionmarket.revealChoice();
-        await yesReveal.wait();
-      });
+        it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
+          claimTransaction = await secretpredictionmarket.claimWinnings();
+          await claimTransaction.wait();
 
-      it("should revert", async () => {
-        await expect(secretpredictionmarket.claimWinnings()).to.be.revertedWith(
-          "Invalid claim"
-        );
+          const playerAddressBalance = await provider.getBalance(
+            deployer.address
+          );
+
+          winnings =
+            wager +
+            (1 / secretpredictionmarket.numOfWinningReveals()) *
+              secretpredictionmarket.losingPot();
+
+          expect(playerAddressBalance).to.eq(winnings);
+        });
+
+        it("should emit WinningsClaimed event", async () => {
+          expect(claimTransaction)
+            .to.emit(secretpredictionmarket, "WinningsClaimed")
+            .withArgs(choice, winnings);
+        });
       });
     });
   });

@@ -3,12 +3,12 @@ pragma solidity ^0.8.11;
 import "./ISecretPredictionMarket.sol";
 
 contract SecretPredictionMarket is ISecretPredictionMarket {
-    uint256 public fixedWager;
     uint256 public totalPot;
     uint256 public winningPot;
     uint256 public losingPot;
     uint256 public numOfWinningReveals;
 
+    uint256 public immutable fixedWager;
     uint256 public immutable commitDeadline;
     uint256 public immutable revealDeadline;
     uint256 public immutable eventDeadline;
@@ -24,17 +24,20 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
 
     struct Prediction {
         bool hasCommitted;
+        bool hasClaimedWinnings;
         bytes32 commitment;
         uint256 wager;
         Choice choice;
     }
 
     constructor(
+        uint256 _fixedWager,
         uint256 _commitDeadline,
         uint256 _revealDeadline,
         uint256 _eventDeadline,
         uint256 _payoutDeadline
     ) {
+        fixedWager = _fixedWager;
         commitDeadline = _commitDeadline;
         revealDeadline = _revealDeadline;
         eventDeadline = _eventDeadline;
@@ -42,10 +45,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     function commitChoice(bytes32 commitment) external payable {
-        require(
-            block.timestamp <= commitDeadline,
-            "Commit deadline has passed"
-        );
+        require(block.timestamp > commitDeadline, "Commit deadline has passed");
 
         require(
             !predictions[msg.sender].hasCommitted,
@@ -61,6 +61,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
 
         predictions[msg.sender] = Prediction(
             true,
+            false,
             commitment,
             msg.value,
             Choice.Hidden
@@ -70,10 +71,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     function revealChoice(Choice choice, bytes32 blindingFactor) external {
-        require(
-            block.timestamp <= revealDeadline,
-            "Reveal deadline has passed"
-        );
+        require(block.timestamp < revealDeadline, "Reveal deadline has passed");
 
         require(
             predictions[msg.sender].hasCommitted,
@@ -110,7 +108,24 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         emit Reveal(msg.sender, prediction.choice);
     }
 
-    function claimWinnings() external {}
+    function claimWinnings() external {
+        require(block.timestamp < payoutDeadline, "Payout deadline has passed");
+
+        require(
+            !predictions[msg.sender].hasClaimedWinnings,
+            "User has already claimed winnings"
+        );
+
+        Prediction memory prediction = predictions[msg.sender];
+        uint256 winnings = prediction.wager +
+            (prediction.wager / winningPot) *
+            losingPot;
+
+        (bool success, ) = msg.sender.call{value: winnings}("");
+        require(success);
+
+        emit Payout(msg.sender, winnings);
+    }
 
     function reportEvent() external {}
 }

@@ -1,5 +1,3 @@
-pragma solidity ^0.8.11;
-
 interface ISecretPredictionMarket {
     enum Choice {
         Hidden,

@@ -1,6 +1,7 @@
 pragma solidity ^0.8.11;
 
 import "./ISecretPredictionMarket.sol";
+import "./PriceOracle.sol";
 
 contract SecretPredictionMarket is ISecretPredictionMarket {
     uint256 public totalPot;
@@ -8,11 +9,13 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     uint256 public losingPot;
     uint256 public numOfWinningReveals;
 
+    int256 public immutable benchmarkPrice;
     uint256 public immutable fixedWager;
     uint256 public immutable commitDeadline;
     uint256 public immutable revealDeadline;
     uint256 public immutable eventDeadline;
     uint256 public immutable payoutDeadline;
+    PriceOracle public immutable priceOracle;
 
     bool public eventHasOccured;
 
@@ -31,12 +34,16 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     constructor(
+        int256 _benchmarkPrice,
         uint256 _fixedWager,
         uint256 _commitDeadline,
         uint256 _revealDeadline,
         uint256 _eventDeadline,
-        uint256 _payoutDeadline
+        uint256 _payoutDeadline,
+        address _priceOracleAddress
     ) {
+        benchmarkPrice = _benchmarkPrice;
+        priceOracle = PriceOracle(_priceOracleAddress);
         fixedWager = _fixedWager;
         commitDeadline = _commitDeadline;
         revealDeadline = _revealDeadline;
@@ -127,5 +134,11 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         emit Payout(msg.sender, winnings);
     }
 
-    function reportEvent() external {}
+    function reportEvent() external {
+        (, int256 price, , , ) = priceOracle.latestRoundData();
+
+        if (price > benchmarkPrice) {
+            eventHasOccured = true;
+        }
+    }
 }

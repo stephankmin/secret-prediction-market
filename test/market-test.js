@@ -58,6 +58,57 @@ describe("SecretPredictionMarket", () => {
     });
   });
 
+  describe("reportEvent", () => {
+    let price;
+    let benchmarkPrice;
+    let wager;
+    let recentBlock;
+    let commitDeadline;
+    let revealDeadline;
+    let eventDeadline;
+    let payoutDeadline;
+    let priceOracleAddress;
+
+    before(async () => {
+      benchmarkPrice = 5000;
+      wager = ethers.parseEther("1.0");
+      recentBlock = 13981319;
+      commitDeadline = recentBlock + 10000;
+      revealDeadline = recentBlock + 20000;
+      eventDeadline = recentBlock + 30000;
+      payoutDeadline = recentBlock + 40000;
+
+      MockPriceOracle = ethers.getContractFactory("MockPriceOracle");
+      mockOracle = await MockPriceOracle.deployed();
+      await mockOracle.wait();
+
+      priceOracleAddress = mockOracle.address;
+
+      SecretPredictionMarket = ethers.getContractFactory(
+        "SecretPredictionMarket"
+      );
+      secretpredictionmarket = await SecretPredictionMarket.deploy(
+        benchmarkPrice,
+        wager,
+        commitDeadline,
+        revealDeadline,
+        eventDeadline,
+        payoutDeadline,
+        priceOracleAddress
+      );
+      await secretpredictionmarket.deployed();
+    });
+
+    describe("when price = 4000 and benchmarkPrice = 5000", () => {
+      before(async () => {
+        price = 4000;
+
+        const setMockPrice = await mockOracle.setEthPrice(price);
+        await setMockPrice.wait();
+      });
+    });
+  });
+
   describe("revealChoice", () => {
     let choice;
     let blindingFactor;

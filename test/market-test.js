@@ -59,6 +59,9 @@ describe("SecretPredictionMarket", () => {
   });
 
   describe("reportEvent", () => {
+    let MockPriceOracle;
+    let mockOracle;
+
     let price;
     let benchmarkPrice;
     let wager;
@@ -70,7 +73,6 @@ describe("SecretPredictionMarket", () => {
     let priceOracleAddress;
 
     before(async () => {
-      benchmarkPrice = 5000;
       wager = ethers.parseEther("1.0");
       recentBlock = 13981319;
       commitDeadline = recentBlock + 10000;
@@ -83,28 +85,85 @@ describe("SecretPredictionMarket", () => {
       await mockOracle.wait();
 
       priceOracleAddress = mockOracle.address;
-
-      SecretPredictionMarket = ethers.getContractFactory(
-        "SecretPredictionMarket"
-      );
-      secretpredictionmarket = await SecretPredictionMarket.deploy(
-        benchmarkPrice,
-        wager,
-        commitDeadline,
-        revealDeadline,
-        eventDeadline,
-        payoutDeadline,
-        priceOracleAddress
-      );
-      await secretpredictionmarket.deployed();
     });
 
-    describe("when price = 4000 and benchmarkPrice = 5000", () => {
-      before(async () => {
+    describe("when price is under benchmarkPrice", () => {
+      let checkEventTransaction;
+
+      beforeEach(async () => {
         price = 4000;
+        benchmarkPrice = 5000;
+
+        SecretPredictionMarket = ethers.getContractFactory(
+          "SecretPredictionMarket"
+        );
+        secretpredictionmarket = await SecretPredictionMarket.deploy(
+          benchmarkPrice,
+          wager,
+          commitDeadline,
+          revealDeadline,
+          eventDeadline,
+          payoutDeadline,
+          priceOracleAddress
+        );
+        await secretpredictionmarket.deployed();
 
         const setMockPrice = await mockOracle.setEthPrice(price);
         await setMockPrice.wait();
+      });
+
+      it("should set eventHasOccurred to false", async () => {
+        checkEventTransaction = await secretpredictionmarket.reportEvent();
+        await checkEventTransaction.wait();
+
+        const eventHasOccurred = secretpredictionmarket.eventHasOccurred();
+
+        expect(eventHasOccurred).to.eq(false);
+      });
+    });
+
+    describe("when price is above benchmarkPrice", () => {
+      let checkEventTransaction;
+
+      beforeEach(async () => {
+        price = 6000;
+        benchmarkPrice = 5000;
+
+        SecretPredictionMarket = ethers.getContractFactory(
+          "SecretPredictionMarket"
+        );
+        secretpredictionmarket = await SecretPredictionMarket.deploy(
+          benchmarkPrice,
+          wager,
+          commitDeadline,
+          revealDeadline,
+          eventDeadline,
+          payoutDeadline,
+          priceOracleAddress
+        );
+        await secretpredictionmarket.deployed();
+
+        const setMockPrice = await mockOracle.setEthPrice(price);
+        await setMockPrice.wait();
+      });
+
+      it("should set eventHasOccurred to true", async () => {
+        checkEventTransaction = await secretpredictionmarket.reportEvent();
+        await checkEventTransaction.wait();
+
+        const eventHasOccurred = secretpredictionmarket.eventHasOccurred();
+
+        expect(eventHasOccurred).to.eq(true);
+      });
+
+      it("should emit EventHasOccurred event", async () => {
+        checkEventTransaction = await secretpredictionmarket.reportEvent();
+        await checkEventTransaction.wait();
+
+        const checkEventTransactionBlock = await provider
+          .expect(checkEventTransaction)
+          .to.emit("EventHasOccurred")
+          .withArgs();
       });
     });
   });

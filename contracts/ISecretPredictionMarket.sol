@@ -9,5 +9,5 @@ interface ISecretPredictionMarket {
 
     function revealChoice(Choice choice, bytes32 blindingFactor) external;
 
-    function reportEvent() external;
+    function reportEvent() external returns (bool);
 }

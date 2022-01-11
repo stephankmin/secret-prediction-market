@@ -17,11 +17,12 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     uint256 public immutable payoutDeadline;
     PriceOracle public immutable priceOracle;
 
-    bool public eventHasOccured;
+    bool public eventHasOccurred;
 
     mapping(address => Prediction) predictions;
 
     event Commit(address player, uint256 wager);
+    event EventHasOccurred(uint256 blockNumber);
     event Reveal(address player, Choice choice);
     event Payout(address player, uint256 winnings);
 
@@ -105,8 +106,8 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         prediction.choice = choice;
 
         if (
-            (eventHasOccured && prediction.choice == Choice.Yes) ||
-            (!eventHasOccured && prediction.choice == Choice.No)
+            (eventHasOccurred && prediction.choice == Choice.Yes) ||
+            (!eventHasOccurred && prediction.choice == Choice.No)
         ) {
             numOfWinningReveals++;
             winningPot += prediction.wager;
@@ -134,11 +135,19 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         emit Payout(msg.sender, winnings);
     }
 
-    function reportEvent() external {
+    function reportEvent() external returns (bool) {
+        require(!eventHasOccurred, "Event has already occurred");
+
+        require(block.timestamp < eventDeadline, "Event deadline has passed");
+
         (, int256 price, , , ) = priceOracle.latestRoundData();
 
         if (price > benchmarkPrice) {
-            eventHasOccured = true;
+            eventHasOccurred = true;
         }
+
+        emit EventHasOccurred(block.number);
+
+        return eventHasOccurred;
     }
 }

@@ -6,16 +6,41 @@ describe("SecretPredictionMarket", () => {
   let secretpredictionmarket;
   let accounts;
   let deployer;
+  let mostRecentBlock;
+
+  // constructor parameters
+  let benchmarkPrice;
+  let wager;
+  let commitDeadline;
+  let revealDeadline;
+  let eventDeadline;
+  let payoutDeadline;
+  let priceOracleAddress;
 
   before(async () => {
     accounts = await ethers.getSigners();
     deployer = accounts[0];
+
+    // arbitrary params for testing purposes
+    benchmarkPrice = 5000;
+    wager = ethers.utils.parseEther("1.0");
+    mostRecentBlock = await provider.getBlockNumber();
+    commitDeadline = mostRecentBlock + 10000;
+    revealDeadline = mostRecentBlock + 20000;
+    eventDeadline = mostRecentBlock + 30000;
+    payoutDeadline = mostRecentBlock + 40000;
+
+    // deploy mock oracle and assign priceOracleAddress
+    MockPriceOracle = ethers.getContractFactory("MockPriceOracle");
+    mockOracle = await MockPriceOracle.deployed();
+    await mockOracle.wait();
+
+    priceOracleAddress = mockOracle.address;
   });
 
   describe("commitChoice", () => {
-    let wager;
-    let commitInput;
-    let playerCommitTransaction;
+    let commitment;
+    let commitChoiceTransaction;
 
     before(async () => {
       SecretPredictionMarket = ethers.getContractFactory(
@@ -24,17 +49,15 @@ describe("SecretPredictionMarket", () => {
       secretpredictionmarket = await SecretPredictionMarket.deploy();
       await secretpredictionmarket.deployed();
 
-      wager = ethers.utils.parseEther("1.0");
-
-      commitInput = await ethers.utils.keccak256(
+      commitment = await ethers.utils.keccak256(
         abiCoder.encode([deployer.address, 1, "test"])
       );
 
-      playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-        commitInput,
+      commitChoiceTransaction = await SecretPredictionMarket.commitChoice(
+        commitment,
         { value: wager }
       );
-      await playerCommitTransaction.wait();
+      await commitChoiceTransaction.wait();
     });
 
     it("should revert if commit deadline has passed", async () => {});
@@ -44,7 +67,7 @@ describe("SecretPredictionMarket", () => {
         deployer.address
       );
 
-      expect(playerCommitStruct["commitment"]).to.eq(commitInput);
+      expect(playerCommitStruct["commitment"]).to.eq(commitment);
 
       expect(playerCommitStruct["wager"]).to.eq(wager);
 
@@ -52,7 +75,7 @@ describe("SecretPredictionMarket", () => {
     });
 
     it("should emit Commit event", async () => {
-      expect(playerCommitTransaction)
+      expect(commitChoiceTransaction)
         .to.emit(secretpredictionmarket, "Commit")
         .withArgs(deployer.address, wager);
     });
@@ -61,25 +84,10 @@ describe("SecretPredictionMarket", () => {
   describe("reportEvent", () => {
     let MockPriceOracle;
     let mockOracle;
-
     let price;
-    let benchmarkPrice;
-    let wager;
-    let recentBlock;
-    let commitDeadline;
-    let revealDeadline;
-    let eventDeadline;
-    let payoutDeadline;
     let priceOracleAddress;
 
     before(async () => {
-      wager = ethers.parseEther("1.0");
-      recentBlock = 13981319;
-      commitDeadline = recentBlock + 10000;
-      revealDeadline = recentBlock + 20000;
-      eventDeadline = recentBlock + 30000;
-      payoutDeadline = recentBlock + 40000;
-
       MockPriceOracle = ethers.getContractFactory("MockPriceOracle");
       mockOracle = await MockPriceOracle.deployed();
       await mockOracle.wait();
@@ -247,8 +255,8 @@ describe("SecretPredictionMarket", () => {
   describe("claimWinnings", () => {
     let wager;
     let choice;
-    let commitInput;
-    let playerCommitTransaction;
+    let commitment;
+    let commitChoiceTransaction;
 
     let reportEventOccured;
 
@@ -274,15 +282,15 @@ describe("SecretPredictionMarket", () => {
         before(async () => {
           choice = 1;
 
-          commitInput = await ethers.utils.keccak256(
+          commitment = await ethers.utils.keccak256(
             abiCoder.encode([deployer.address, choice, "test"])
           );
 
-          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-            commitInput,
+          commitChoiceTransaction = await SecretPredictionMarket.commitChoice(
+            commitment,
             { value: wager }
           );
-          await playerCommitTransaction.wait();
+          await commitChoiceTransaction.wait();
 
           reportEventOccured = await secretpredictionmarket.reportEvent();
           await reportEventOccured.wait();
@@ -318,15 +326,15 @@ describe("SecretPredictionMarket", () => {
         before(async () => {
           choice = 2;
 
-          commitInput = await ethers.utils.keccak256(
+          commitment = await ethers.utils.keccak256(
             abiCoder.encode([deployer.address, choice, "test"])
           );
 
-          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-            commitInput,
+          commitChoiceTransaction = await SecretPredictionMarket.commitChoice(
+            commitment,
             { value: wager }
           );
-          await playerCommitTransaction.wait();
+          await commitChoiceTransaction.wait();
 
           reportEventOccured = await secretpredictionmarket.reportEvent();
           await reportEventOccured.wait();
@@ -348,15 +356,15 @@ describe("SecretPredictionMarket", () => {
         before(async () => {
           choice = 1;
 
-          commitInput = await ethers.utils.keccak256(
+          commitment = await ethers.utils.keccak256(
             abiCoder.encode([deployer.address, choice, "test"])
           );
 
-          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-            commitInput,
+          commitChoiceTransaction = await SecretPredictionMarket.commitChoice(
+            commitment,
             { value: wager }
           );
-          await playerCommitTransaction.wait();
+          await commitChoiceTransaction.wait();
 
           yesReveal = await secretpredictionmarket.revealChoice();
           await yesReveal.wait();
@@ -373,15 +381,15 @@ describe("SecretPredictionMarket", () => {
         before(async () => {
           choice = 2;
 
-          commitInput = await ethers.utils.keccak256(
+          commitment = await ethers.utils.keccak256(
             abiCoder.encode([deployer.address, choice, "test"])
           );
 
-          playerCommitTransaction = await SecretPredictionMarket.commitChoice(
-            commitInput,
+          commitChoiceTransaction = await SecretPredictionMarket.commitChoice(
+            commitment,
             { value: wager }
           );
-          await playerCommitTransaction.wait();
+          await commitChoiceTransaction.wait();
 
           noReveal = await secretpredictionmarket.revealChoice();
           await noReveal.wait();

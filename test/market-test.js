@@ -10,7 +10,7 @@ describe("SecretPredictionMarket", () => {
 
   // constructor parameters
   let benchmarkPrice;
-  let wager;
+  let fixedWager;
   let commitDeadline;
   let revealDeadline;
   let eventDeadline;
@@ -23,7 +23,7 @@ describe("SecretPredictionMarket", () => {
 
     // arbitrary params for testing purposes
     benchmarkPrice = 5000;
-    wager = ethers.utils.parseEther("1.0");
+    fixedWager = ethers.utils.parseEther("1.0");
     mostRecentBlock = await provider.getBlockNumber();
     commitDeadline = mostRecentBlock + 10000;
     revealDeadline = mostRecentBlock + 20000;
@@ -42,25 +42,56 @@ describe("SecretPredictionMarket", () => {
     let commitment;
     let commitChoiceTransaction;
 
-    before(async () => {
+    beforeEach(async () => {
       SecretPredictionMarket = ethers.getContractFactory(
         "SecretPredictionMarket"
       );
-      secretpredictionmarket = await SecretPredictionMarket.deploy();
+      secretpredictionmarket = await SecretPredictionMarket.deploy(
+        benchmarkPrice,
+        fixedWager,
+        commitDeadline,
+        revealDeadline,
+        eventDeadline,
+        payoutDeadline,
+        priceOracleAddress
+      );
       await secretpredictionmarket.deployed();
 
       commitment = await ethers.utils.keccak256(
         abiCoder.encode([deployer.address, 1, "test"])
       );
-
-      commitChoiceTransaction = await SecretPredictionMarket.commitChoice(
-        commitment,
-        { value: wager }
-      );
-      await commitChoiceTransaction.wait();
     });
 
-    it("should revert if commit deadline has passed", async () => {});
+    it("should revert if commit deadline has passed", async () => {
+      await network.provider.send("evm_increaseTime", [100000]);
+      await network.provider.send("evm_mine");
+
+      await expect(
+        secretpredictionmarket.commitChoice(commitment, { value: wager })
+      ).to.be.revertedWith("Commit deadline has passed");
+    });
+
+    it("should revert if user has already committed choice", async () => {
+      commitChoiceTransaction = await secretpredictionmarket.commitChoice(
+        commitment,
+        { value: fixedWager }
+      );
+      await commitChoiceTransaction.wait();
+
+      await expect(
+        secretpredictionmarket.commitChoice(commitment, { value: fixedWager })
+      ).to.be.revertedWith("Player has already committed their choice");
+    });
+
+    it("should revert if user wager != fixedWager", async () => {
+      const incorrectWager = ethers.utils.parseEther("2.0");
+
+      await expect(
+        secretpredictionmarket.commitChoice(commitment, {
+          value: incorrectWager,
+        })
+      ).to.be.revertedWith("Player's wager does not match fixed wager");
+    });
 
     it("should store PredictionCommit for player in players mapping", async () => {
       const playerCommitStruct = await secretpredictionmarket.players(
@@ -69,7 +100,7 @@ describe("SecretPredictionMarket", () => {
 
       expect(playerCommitStruct["commitment"]).to.eq(commitment);
 
-      expect(playerCommitStruct["wager"]).to.eq(wager);
+      expect(playerCommitStruct["wager"]).to.eq(fixedWager);
 
       expect(playerCommitStruct["choice"]).to.eq(0);
     });
@@ -185,7 +216,15 @@ describe("SecretPredictionMarket", () => {
       SecretPredictionMarket = ethers.getContractFactory(
         "SecretPredictionMarket"
       );
-      secretpredictionmarket = await SecretPredictionMarket.deploy();
+      secretpredictionmarket = await SecretPredictionMarket.deploy(
+        benchmarkPrice,
+        wager,
+        commitDeadline,
+        revealDeadline,
+        eventDeadline,
+        payoutDeadline,
+        priceOracleAddress
+      );
       await secretpredictionmarket.deployed();
 
       choice = 1;
@@ -269,7 +308,15 @@ describe("SecretPredictionMarket", () => {
       SecretPredictionMarket = ethers.getContractFactory(
         "SecretPredictionMarket"
       );
-      secretpredictionmarket = await SecretPredictionMarket.deploy();
+      secretpredictionmarket = await SecretPredictionMarket.deploy(
+        benchmarkPrice,
+        wager,
+        commitDeadline,
+        revealDeadline,
+        eventDeadline,
+        payoutDeadline,
+        priceOracleAddress
+      );
       await secretpredictionmarket.deployed();
 
       wager = ethers.utils.parseEther("1.0");

@@ -5,6 +5,8 @@ import "./PriceOracle.sol";
 contract MockPriceOracle is PriceOracle {
     int256 ethPrice;
 
+    constructor() {}
+
     function latestRoundData()
         external
         view

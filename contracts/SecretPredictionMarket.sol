@@ -19,7 +19,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
 
     bool public eventHasOccurred;
 
-    mapping(address => Prediction) predictions;
+    mapping(address => Prediction) public predictions;
 
     event Commit(address player, uint256 wager);
     event EventHasOccurred(uint256 blockNumber);
@@ -53,7 +53,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     function commitChoice(bytes32 commitment) external payable {
-        require(block.timestamp > commitDeadline, "Commit deadline has passed");
+        require(block.timestamp < commitDeadline, "Commit deadline has passed");
 
         require(
             !predictions[msg.sender].hasCommitted,

@@ -76,6 +76,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             Choice.Hidden
         );
 
+        console.logBytes32(commitment);
         emit Commit(msg.sender, msg.value);
     }
 
@@ -145,8 +146,6 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     function reportEvent() external returns (bool) {
-        require(!eventHasOccurred, "Event has already occurred");
-
         require(block.timestamp < eventDeadline, "Event deadline has passed");
 
         (, int256 price, , , ) = priceOracle.latestRoundData();

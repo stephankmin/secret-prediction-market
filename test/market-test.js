@@ -168,14 +168,12 @@ describe("SecretPredictionMarket", () => {
       let checkEventTransaction;
 
       before(async () => {
+        snapshotId = await ethers.provider.send("evm_snapshot", []);
+
         price = 4000;
 
         const setMockPrice = await mockOracle.setEthPrice(price);
         await setMockPrice.wait();
-      });
-
-      beforeEach(async () => {
-        snapshotId = await ethers.provider.send("evm_snapshot", []);
       });
 
       afterEach(async () => {
@@ -197,6 +195,8 @@ describe("SecretPredictionMarket", () => {
       let checkEventTransaction;
 
       before(async () => {
+        snapshotId = await ethers.provider.send("evm_snapshot", []);
+
         price = 6000;
 
         const setMockPrice = await mockOracle.setEthPrice(price);
@@ -204,10 +204,6 @@ describe("SecretPredictionMarket", () => {
 
         checkEventTransaction = await secretPredictionMarket.reportEvent();
         await checkEventTransaction.wait();
-      });
-
-      beforeEach(async () => {
-        snapshotId = await ethers.provider.send("evm_snapshot", []);
       });
 
       afterEach(async () => {
@@ -357,32 +353,63 @@ describe("SecretPredictionMarket", () => {
 
   describe("claimWinnings", () => {
     let choice;
-    let commitment;
-    let addressHexlify;
+    let yesCommitment;
+    let noCommitment;
+    let deployerAddressHexlify;
+    let user1AddressHexlify;
     let yesChoiceHexlify;
     let noChoiceHexlify;
-    let commitChoiceTransaction;
+
+    let yesCommitChoiceTransaction;
+    let noCommitChoiceTransaction;
+
+    let winnings;
+    let numWinningReveals;
+    let losingPot;
 
     let reportEventOccured;
 
     let yesReveal;
     let noReveal;
 
-    let winnings;
     let claimTransaction;
 
     before(async () => {
-      addressHexlify = ethers.utils.hexZeroPad(
+      user1 = accounts[1];
+
+      deployerAddressHexlify = ethers.utils.hexZeroPad(
         ethers.utils.hexlify(deployer.address),
+        32
+      );
+      user1AddressHexlify = ethers.utils.hexZeroPad(
+        ethers.utils.hexlify(user1.address),
         32
       );
       yesChoiceHexlify = ethers.utils.hexZeroPad(ethers.utils.hexlify(1), 32);
       noChoiceHexlify = ethers.utils.hexZeroPad(ethers.utils.hexlify(2), 32);
 
-      winnings =
-        fixedWager +
-        (1 / secretPredictionMarket.numOfWinningReveals()) *
-          secretPredictionMarket.losingPot();
+      yesCommitment = await ethers.utils.solidityKeccak256(
+        ["bytes32", "bytes32", "bytes32"],
+        [deployerAddressHexlify, yesChoiceHexlify, testBlindingFactor]
+      );
+
+      noCommitment = await ethers.utils.solidityKeccak256(
+        ["bytes32", "bytes32", "bytes32"],
+        [user1AddressHexlify, noChoiceHexlify, testBlindingFactor]
+      );
+
+      yesCommitChoiceTransaction = await secretPredictionMarket.commitChoice(
+        yesCommitment,
+        {
+          value: fixedWager,
+        }
+      );
+      await yesCommitChoiceTransaction.wait();
+
+      noCommitChoiceTransaction = await secretPredictionMarket
+        .connect(user1)
+        .commitChoice(noCommitment, { value: fixedWager });
+      await noCommitChoiceTransaction.wait();
     });
 
     beforeEach(async () => {
@@ -395,31 +422,31 @@ describe("SecretPredictionMarket", () => {
 
     describe("when event occurs", () => {
       before(async () => {
+        snapshotId = await ethers.provider.send("evm_snapshot", []);
+
         price = 6000;
 
         const setMockPrice = await mockOracle.setEthPrice(price);
         await setMockPrice.wait();
+
+        reportEventOccured = await secretPredictionMarket.reportEvent();
+        await reportEventOccured.wait();
+      });
+
+      after(async () => {
+        await ethers.provider.send("evm_revert", [snapshotId]);
+      });
+
+      it("should set eventHasOccurred to true", async () => {
+        const eventHasOccurred =
+          await secretPredictionMarket.eventHasOccurred();
+
+        expect(eventHasOccurred).to.eq(true);
       });
 
       describe("when player with 'Yes' reveal attempts to claim", () => {
-        let winnings;
-
         beforeEach(async () => {
           snapshotId = await ethers.provider.send("evm_snapshot", []);
-
-          commitment = await ethers.utils.solidityKeccak256(
-            ["bytes32", "bytes32", "bytes32"],
-            [addressHexlify, yesChoiceHexlify, testBlindingFactor]
-          );
-
-          commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-            commitment,
-            { value: fixedWager }
-          );
-          await commitChoiceTransaction.wait();
-
-          reportEventOccured = await secretPredictionMarket.reportEvent();
-          await reportEventOccured.wait();
 
           yesReveal = await secretPredictionMarket.revealChoice(
             1,
@@ -433,11 +460,16 @@ describe("SecretPredictionMarket", () => {
         });
 
         it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
+          numWinningReveals = secretPredictionMarket.numOfWinningReveals();
+          proportionOfWinningPot = 1 / numWinningReveals;
+          losingPot = ethers.BigNumber.from(secretPredictionMarket.losingPot());
+          winnings = fixedWager.add(proportionOfWinningPot.mul(losingPot));
+
           claimTransaction = await secretPredictionMarket.claimWinnings();
           await claimTransaction.wait();
 
-          const playerAddressBalance = ethers.utils.parseEther(
-            ethers.provider.getBalance(deployer.address)
+          const playerAddressBalance = ethers.provider.getBalance(
+            deployer.address
           );
 
           expect(playerAddressBalance).to.eq(winnings);
@@ -454,24 +486,9 @@ describe("SecretPredictionMarket", () => {
         beforeEach(async () => {
           snapshotId = await ethers.provider.send("evm_snapshot", []);
 
-          commitment = await ethers.utils.solidityKeccak256(
-            ["bytes32", "bytes32", "bytes32"],
-            [addressHexlify, noChoiceHexlify, testBlindingFactor]
-          );
-
-          commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-            commitment,
-            { value: fixedWager }
-          );
-          await commitChoiceTransaction.wait();
-
-          reportEventOccured = await secretPredictionMarket.reportEvent();
-          await reportEventOccured.wait();
-
-          noReveal = await secretPredictionMarket.revealChoice(
-            2,
-            testBlindingFactor
-          );
+          noReveal = await secretPredictionMarket
+            .connect(user1)
+            .revealChoice(2, testBlindingFactor);
           await noReveal.wait();
         });
 
@@ -481,7 +498,7 @@ describe("SecretPredictionMarket", () => {
 
         it("should revert", async () => {
           await expect(
-            secretPredictionMarket.claimWinnings()
+            secretPredictionMarket.connect(user1).claimWinnings()
           ).to.be.revertedWith("Invalid claim");
         });
       });
@@ -493,6 +510,16 @@ describe("SecretPredictionMarket", () => {
 
         const setMockPrice = await mockOracle.setEthPrice(price);
         await setMockPrice.wait();
+
+        reportEventOccured = await secretPredictionMarket.reportEvent();
+        await reportEventOccured.wait();
+      });
+
+      it("should set eventHasOccurred to false", async () => {
+        const eventHasOccurred =
+          await secretPredictionMarket.eventHasOccurred();
+
+        expect(eventHasOccurred).to.eq(false);
       });
 
       describe("when player with 'Yes' reveal attempts to claim", () => {
@@ -501,7 +528,7 @@ describe("SecretPredictionMarket", () => {
 
           commitment = await ethers.utils.solidityKeccak256(
             ["bytes32", "bytes32", "bytes32"],
-            [addressHexlify, yesChoiceHexlify, testBlindingFactor]
+            [deployerAddressHexlify, yesChoiceHexlify, testBlindingFactor]
           );
 
           commitChoiceTransaction = await secretPredictionMarket.commitChoice(
@@ -534,7 +561,7 @@ describe("SecretPredictionMarket", () => {
 
           commitment = await ethers.utils.solidityKeccak256(
             ["bytes32", "bytes32", "bytes32"],
-            [addressHexlify, noChoiceHexlify, testBlindingFactor]
+            [user1AddressHexlify, noChoiceHexlify, testBlindingFactor]
           );
 
           commitChoiceTransaction = await secretPredictionMarket.commitChoice(

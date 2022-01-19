@@ -2,6 +2,7 @@ pragma solidity ^0.8.11;
 
 import "./ISecretPredictionMarket.sol";
 import "./PriceOracle.sol";
+import "hardhat/console.sol";
 
 contract SecretPredictionMarket is ISecretPredictionMarket {
     uint256 public totalPot;
@@ -78,6 +79,14 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         emit Commit(msg.sender, msg.value);
     }
 
+    function testHash(Choice choice, bytes32 blindingFactor)
+        external
+        view
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(msg.sender, choice, blindingFactor));
+    }
+
     function revealChoice(Choice choice, bytes32 blindingFactor) external {
         require(block.timestamp < revealDeadline, "Reveal deadline has passed");
 
@@ -99,7 +108,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         Prediction storage prediction = predictions[msg.sender];
 
         require(
-            keccak256(abi.encodePacked(msg.sender, choice, blindingFactor)) ==
+            keccak256(abi.encode(msg.sender, choice, blindingFactor)) ==
                 prediction.commitment,
             "Hash does not match commitment"
         );
@@ -144,9 +153,8 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
 
         if (price > benchmarkPrice) {
             eventHasOccurred = true;
+            emit EventHasOccurred(block.number);
         }
-
-        emit EventHasOccurred(block.number);
 
         return eventHasOccurred;
     }

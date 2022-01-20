@@ -29,6 +29,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
 
     struct Prediction {
         bool hasCommitted;
+        bool hasWon;
         bool hasClaimedWinnings;
         bytes32 commitment;
         uint256 wager;
@@ -71,12 +72,11 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         predictions[msg.sender] = Prediction(
             true,
             false,
+            false,
             commitment,
             msg.value,
             Choice.Hidden
         );
-
-        console.logBytes32(commitment);
         emit Commit(msg.sender, msg.value);
     }
 
@@ -119,15 +119,17 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             (eventHasOccurred && prediction.choice == Choice.Yes) ||
             (!eventHasOccurred && prediction.choice == Choice.No)
         ) {
+            prediction.hasWon = true;
             numOfWinningReveals++;
             winningPot += prediction.wager;
         }
-
         emit Reveal(msg.sender, prediction.choice);
     }
 
     function claimWinnings() external {
         require(block.timestamp < payoutDeadline, "Payout deadline has passed");
+
+        require(predictions[msg.sender].hasWon, "Invalid claim");
 
         require(
             !predictions[msg.sender].hasClaimedWinnings,
@@ -155,6 +157,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             emit EventHasOccurred(block.number);
         }
 
+        console.log("eventHasOccurred:", eventHasOccurred);
         return eventHasOccurred;
     }
 }

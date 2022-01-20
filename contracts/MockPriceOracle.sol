@@ -3,7 +3,7 @@ pragma solidity ^0.8.11;
 import "./PriceOracle.sol";
 
 contract MockPriceOracle is PriceOracle {
-    int256 ethPrice;
+    int256 public ethPrice;
 
     constructor() {}
 

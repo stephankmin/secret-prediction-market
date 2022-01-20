@@ -72,7 +72,7 @@ describe("SecretPredictionMarket", () => {
   });
 
   describe("commitChoice", () => {
-    let snapshotId;
+    let commitChoiceSnapshotId;
     let commitment;
     let commitChoiceTransaction;
 
@@ -84,11 +84,11 @@ describe("SecretPredictionMarket", () => {
     });
 
     beforeEach(async () => {
-      snapshotId = await ethers.provider.send("evm_snapshot", []);
+      commitChoiceSnapshotId = await ethers.provider.send("evm_snapshot", []);
     });
 
     afterEach(async () => {
-      await ethers.provider.send("evm_revert", [snapshotId]);
+      await ethers.provider.send("evm_revert", [commitChoiceSnapshotId]);
     });
 
     it("should revert if commit deadline has passed", async () => {
@@ -147,7 +147,7 @@ describe("SecretPredictionMarket", () => {
       );
       await commitChoiceTransaction.wait();
 
-      await expect(commitChoiceTransaction)
+      expect(commitChoiceTransaction)
         .to.emit(secretPredictionMarket, "Commit")
         .withArgs(deployer.address, fixedWager);
     });
@@ -156,47 +156,15 @@ describe("SecretPredictionMarket", () => {
   describe("reportEvent", () => {
     let price;
 
-    beforeEach(async () => {
-      snapshotId = await ethers.provider.send("evm_snapshot", []);
-    });
-
-    afterEach(async () => {
-      await ethers.provider.send("evm_revert", [snapshotId]);
-    });
-
-    describe("when price is under benchmarkPrice", () => {
-      let checkEventTransaction;
-
-      before(async () => {
-        snapshotId = await ethers.provider.send("evm_snapshot", []);
-
-        price = 4000;
-
-        const setMockPrice = await mockOracle.setEthPrice(price);
-        await setMockPrice.wait();
-      });
-
-      afterEach(async () => {
-        await ethers.provider.send("evm_revert", [snapshotId]);
-      });
-
-      it("should set eventHasOccurred to false", async () => {
-        checkEventTransaction = await secretPredictionMarket.reportEvent();
-        await checkEventTransaction.wait();
-
-        const eventHasOccurred =
-          await secretPredictionMarket.eventHasOccurred();
-
-        expect(eventHasOccurred).to.eq(false);
-      });
-    });
-
     describe("when price is above benchmarkPrice", () => {
       let checkEventTransaction;
+      let beforePriceSetAboveBenchmarkSnapshotId;
 
       before(async () => {
-        snapshotId = await ethers.provider.send("evm_snapshot", []);
-
+        beforePriceSetAboveBenchmarkSnapshotId = await ethers.provider.send(
+          "evm_snapshot",
+          []
+        );
         price = 6000;
 
         const setMockPrice = await mockOracle.setEthPrice(price);
@@ -206,8 +174,11 @@ describe("SecretPredictionMarket", () => {
         await checkEventTransaction.wait();
       });
 
-      afterEach(async () => {
-        await ethers.provider.send("evm_revert", [snapshotId]);
+      after(async () => {
+        await ethers.provider.send("evm_revert", [
+          beforePriceSetAboveBenchmarkSnapshotId,
+        ]);
+        console.log(await secretPredictionMarket.eventHasOccurred());
       });
 
       it("should set eventHasOccurred to true", async () => {
@@ -221,6 +192,40 @@ describe("SecretPredictionMarket", () => {
         expect(checkEventTransaction)
           .to.emit(secretPredictionMarket, "EventHasOccurred")
           .withArgs(checkEventTransaction.blockNumber);
+      });
+    });
+
+    describe("when price is under benchmarkPrice", () => {
+      let checkEventTransaction;
+      let beforePriceSetUnderBenchmarkSnapshotId;
+
+      before(async () => {
+        beforePriceSetUnderBenchmarkSnapshotId = await ethers.provider.send(
+          "evm_snapshot",
+          []
+        );
+
+        price = 4000;
+
+        const setMockPrice = await mockOracle.setEthPrice(price);
+        await setMockPrice.wait();
+
+        checkEventTransaction = await secretPredictionMarket.reportEvent();
+        await checkEventTransaction.wait();
+      });
+
+      after(async () => {
+        await ethers.provider.send("evm_revert", [
+          beforePriceSetUnderBenchmarkSnapshotId,
+        ]);
+        console.log(await secretPredictionMarket.eventHasOccurred());
+      });
+
+      it("should set eventHasOccurred to false", async () => {
+        const eventHasOccurred =
+          await secretPredictionMarket.eventHasOccurred();
+
+        expect(eventHasOccurred).to.eq(false);
       });
     });
   });
@@ -240,13 +245,11 @@ describe("SecretPredictionMarket", () => {
         1,
         testBlindingFactor
       );
-      console.log(contractHashResult);
 
       const ethersHashResult = await ethers.utils.solidityKeccak256(
         ["bytes32", "bytes32", "bytes32"],
         [addressHexlify, choiceHexlify, testBlindingFactor]
       );
-      console.log(ethersHashResult);
 
       expect(contractHashResult).to.eq(ethersHashResult);
     });
@@ -272,7 +275,6 @@ describe("SecretPredictionMarket", () => {
         ["bytes32", "bytes32", "bytes32"],
         [addressHexlify, choiceHexlify, testBlindingFactor]
       );
-      console.log("Test Commitment:", commitment);
     });
 
     beforeEach(async () => {
@@ -375,6 +377,8 @@ describe("SecretPredictionMarket", () => {
     let claimTransaction;
 
     before(async () => {
+      console.log(await secretPredictionMarket.eventHasOccurred());
+
       user1 = accounts[1];
 
       deployerAddressHexlify = ethers.utils.hexZeroPad(
@@ -412,17 +416,14 @@ describe("SecretPredictionMarket", () => {
       await noCommitChoiceTransaction.wait();
     });
 
-    beforeEach(async () => {
-      snapshotId = await ethers.provider.send("evm_snapshot", []);
-    });
-
-    afterEach(async () => {
-      await ethers.provider.send("evm_revert", [snapshotId]);
-    });
-
     describe("when event occurs", () => {
+      let beforePriceSetAboveBenchmarkSnapshotId;
+
       before(async () => {
-        snapshotId = await ethers.provider.send("evm_snapshot", []);
+        beforePriceSetAboveBenchmarkSnapshotId = await ethers.provider.send(
+          "evm_snapshot",
+          []
+        );
 
         price = 6000;
 
@@ -431,10 +432,23 @@ describe("SecretPredictionMarket", () => {
 
         reportEventOccured = await secretPredictionMarket.reportEvent();
         await reportEventOccured.wait();
+
+        yesReveal = await secretPredictionMarket.revealChoice(
+          1,
+          testBlindingFactor
+        );
+        await yesReveal.wait();
+
+        noReveal = await secretPredictionMarket
+          .connect(user1)
+          .revealChoice(2, testBlindingFactor);
+        await noReveal.wait();
       });
 
       after(async () => {
-        await ethers.provider.send("evm_revert", [snapshotId]);
+        await ethers.provider.send("evm_revert", [
+          beforePriceSetAboveBenchmarkSnapshotId,
+        ]);
       });
 
       it("should set eventHasOccurred to true", async () => {
@@ -445,20 +459,6 @@ describe("SecretPredictionMarket", () => {
       });
 
       describe("when player with 'Yes' reveal attempts to claim", () => {
-        beforeEach(async () => {
-          snapshotId = await ethers.provider.send("evm_snapshot", []);
-
-          yesReveal = await secretPredictionMarket.revealChoice(
-            1,
-            testBlindingFactor
-          );
-          await yesReveal.wait();
-        });
-
-        afterEach(async () => {
-          await ethers.provider.send("evm_revert", [snapshotId]);
-        });
-
         it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
           numWinningReveals = secretPredictionMarket.numOfWinningReveals();
           proportionOfWinningPot = 1 / numWinningReveals;
@@ -483,19 +483,6 @@ describe("SecretPredictionMarket", () => {
       });
 
       describe("when player with 'No' reveal attempts to claim", () => {
-        beforeEach(async () => {
-          snapshotId = await ethers.provider.send("evm_snapshot", []);
-
-          noReveal = await secretPredictionMarket
-            .connect(user1)
-            .revealChoice(2, testBlindingFactor);
-          await noReveal.wait();
-        });
-
-        afterEach(async () => {
-          await ethers.provider.send("evm_revert", [snapshotId]);
-        });
-
         it("should revert", async () => {
           await expect(
             secretPredictionMarket.connect(user1).claimWinnings()
@@ -513,6 +500,17 @@ describe("SecretPredictionMarket", () => {
 
         reportEventOccured = await secretPredictionMarket.reportEvent();
         await reportEventOccured.wait();
+
+        yesReveal = await secretPredictionMarket.revealChoice(
+          1,
+          testBlindingFactor
+        );
+        await yesReveal.wait();
+
+        noReveal = await secretPredictionMarket
+          .connect(user1)
+          .revealChoice(2, testBlindingFactor);
+        await noReveal.wait();
       });
 
       it("should set eventHasOccurred to false", async () => {
@@ -523,31 +521,6 @@ describe("SecretPredictionMarket", () => {
       });
 
       describe("when player with 'Yes' reveal attempts to claim", () => {
-        beforeEach(async () => {
-          snapshotId = await ethers.provider.send("evm_snapshot", []);
-
-          commitment = await ethers.utils.solidityKeccak256(
-            ["bytes32", "bytes32", "bytes32"],
-            [deployerAddressHexlify, yesChoiceHexlify, testBlindingFactor]
-          );
-
-          commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-            commitment,
-            { value: fixedWager }
-          );
-          await commitChoiceTransaction.wait();
-
-          yesReveal = await secretPredictionMarket.revealChoice(
-            1,
-            testBlindingFactor
-          );
-          await yesReveal.wait();
-        });
-
-        afterEach(async () => {
-          await ethers.provider.send("evm_revert", [snapshotId]);
-        });
-
         it("should revert", async () => {
           await expect(
             secretPredictionMarket.claimWinnings()
@@ -556,37 +529,14 @@ describe("SecretPredictionMarket", () => {
       });
 
       describe("when player with 'No' reveal attempts to claim", () => {
-        before(async () => {
-          snapshotId = await ethers.provider.send("evm_snapshot", []);
-
-          commitment = await ethers.utils.solidityKeccak256(
-            ["bytes32", "bytes32", "bytes32"],
-            [user1AddressHexlify, noChoiceHexlify, testBlindingFactor]
-          );
-
-          commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-            commitment,
-            { value: fixedWager }
-          );
-          await commitChoiceTransaction.wait();
-
-          noReveal = await secretPredictionMarket.revealChoice(
-            2,
-            testBlindingFactor
-          );
-          await noReveal.wait();
-        });
-
-        afterEach(async () => {
-          await ethers.provider.send("evm_revert", [snapshotId]);
-        });
-
         it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
-          claimTransaction = await secretPredictionMarket.claimWinnings();
+          claimTransaction = await secretPredictionMarket
+            .connect(user1)
+            .claimWinnings();
           await claimTransaction.wait();
 
           const playerAddressBalance = await ethers.provider.getBalance(
-            deployer.address
+            user1.address
           );
 
           expect(playerAddressBalance).to.eq(winnings);

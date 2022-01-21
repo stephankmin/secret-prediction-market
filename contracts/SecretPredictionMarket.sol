@@ -13,8 +13,8 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     int256 public immutable benchmarkPrice;
     uint256 public immutable fixedWager;
     uint256 public immutable commitDeadline;
-    uint256 public immutable revealDeadline;
     uint256 public immutable eventDeadline;
+    uint256 public immutable revealDeadline;
     uint256 public immutable payoutDeadline;
     PriceOracle public immutable priceOracle;
 
@@ -88,6 +88,19 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         return keccak256(abi.encode(msg.sender, choice, blindingFactor));
     }
 
+    function reportEvent() external returns (bool) {
+        require(block.timestamp < eventDeadline, "Event deadline has passed");
+
+        (, int256 price, , , ) = priceOracle.latestRoundData();
+
+        if (price > benchmarkPrice) {
+            eventHasOccurred = true;
+            emit EventHasOccurred(block.number);
+        }
+
+        return eventHasOccurred;
+    }
+
     function revealChoice(Choice choice, bytes32 blindingFactor) external {
         require(block.timestamp < revealDeadline, "Reveal deadline has passed");
 
@@ -121,12 +134,23 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         ) {
             prediction.hasWon = true;
             numOfWinningReveals++;
+            totalPot -= prediction.wager;
             winningPot += prediction.wager;
+        } else {
+            prediction.hasWon = false;
+            totalPot -= prediction.wager;
+            losingPot += prediction.wager;
         }
+
         emit Reveal(msg.sender, prediction.choice);
     }
 
     function claimWinnings() external {
+        require(
+            block.timestamp > revealDeadline,
+            "Winnings can only be claimed after reveal deadline has passed"
+        );
+
         require(block.timestamp < payoutDeadline, "Payout deadline has passed");
 
         require(predictions[msg.sender].hasWon, "Invalid claim");
@@ -136,28 +160,21 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             "User has already claimed winnings"
         );
 
+        if (totalPot > 0) {
+            losingPot += totalPot; // adds wagers from unrevealed commits to losingPot
+            totalPot = 0;
+        }
+
         Prediction memory prediction = predictions[msg.sender];
         uint256 winnings = prediction.wager +
             (prediction.wager / winningPot) *
             losingPot;
 
+        console.log("smart contract winnings: ", winnings);
+
         (bool success, ) = msg.sender.call{value: winnings}("");
         require(success);
 
         emit Payout(msg.sender, winnings);
-    }
-
-    function reportEvent() external returns (bool) {
-        require(block.timestamp < eventDeadline, "Event deadline has passed");
-
-        (, int256 price, , , ) = priceOracle.latestRoundData();
-
-        if (price > benchmarkPrice) {
-            eventHasOccurred = true;
-            emit EventHasOccurred(block.number);
-        }
-
-        console.log("eventHasOccurred:", eventHasOccurred);
-        return eventHasOccurred;
     }
 }

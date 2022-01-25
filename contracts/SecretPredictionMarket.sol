@@ -54,11 +54,67 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         payoutDeadline = _payoutDeadline;
     }
 
-    function commitChoice(bytes32 commitment) external payable {
+    function getSigner(string memory a, bytes memory signature)
+        external
+        view
+        returns (address)
+    {
+        bytes32 message = _prefixed(keccak256(abi.encode(a)));
+        (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
+
+        address recoveredSigner = ecrecover(message, v, r, s);
+        console.log("recoveredSigner: ", recoveredSigner);
+        console.log("msg.sender: ", msg.sender);
+
+        return recoveredSigner;
+    }
+
+    function _prefixed(bytes32 hash) internal pure returns (bytes32) {
+        return keccak256(abi.encode("\x19Ethereum Signed Message:\n", hash));
+    }
+
+    function splitSignature(bytes memory signature)
+        internal
+        pure
+        returns (
+            uint8 v,
+            bytes32 r,
+            bytes32 s
+        )
+    {
+        require(signature.length == 65);
+
+        assembly {
+            // first 32 bytes, after the length prefix.
+            r := mload(add(signature, 32))
+            // second 32 bytes.
+            s := mload(add(signature, 64))
+            // final byte (first byte of the next 32 bytes).
+            v := byte(0, mload(add(signature, 96)))
+        }
+
+        return (v, r, s);
+    }
+
+    function recoverSigner(bytes32 message, bytes memory signature)
+        internal
+        pure
+        returns (address)
+    {
+        (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
+
+        return ecrecover(message, v, r, s);
+    }
+
+    function commitChoice(
+        bytes32 commitment,
+        bytes memory signature,
+        address predictor
+    ) external payable {
         require(block.timestamp < commitDeadline, "Commit deadline has passed");
 
         require(
-            !predictions[msg.sender].hasCommitted,
+            !predictions[predictor].hasCommitted,
             "Player has already committed their choice"
         );
 
@@ -67,9 +123,15 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             "Player's wager does not match fixed wager"
         );
 
+        bytes32 message = _prefixed(
+            keccak256(abi.encode(commitment, predictor))
+        );
+
+        require(recoverSigner(message, signature) == predictor);
+
         totalPot += msg.value;
 
-        predictions[msg.sender] = Prediction(
+        predictions[predictor] = Prediction(
             true,
             false,
             false,
@@ -77,7 +139,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             msg.value,
             Choice.Hidden
         );
-        emit Commit(msg.sender, msg.value);
+        emit Commit(predictor, msg.value);
     }
 
     function testHash(Choice choice, bytes32 blindingFactor)

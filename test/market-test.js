@@ -13,9 +13,15 @@ describe("SecretPredictionMarket", () => {
   let user1StartingBalance;
   let user2;
   let user2StartingBalance;
+  let user3;
   let testBlindingFactor;
 
-  // timestamp to help set deadlines
+  let user1AddressBytes32;
+  let user2AddressBytes32;
+  let yesChoiceBytes32;
+  let noChoiceBytes32;
+
+  // timestamp of most recent block to help set deadlines
   let mostRecentBlockTimestamp;
 
   // constructor parameters
@@ -29,11 +35,27 @@ describe("SecretPredictionMarket", () => {
 
   before(async () => {
     accounts = await ethers.getSigners();
+
     user1 = accounts[0];
+    user1AddressBytes32 = ethers.utils.hexZeroPad(
+      ethers.utils.hexlify(user1.address),
+      32
+    );
     user1StartingBalance = await ethers.provider.getBalance(user1.address);
+
     user2 = accounts[1];
+    user2AddressBytes32 = ethers.utils.hexZeroPad(
+      ethers.utils.hexlify(user2.address),
+      32
+    );
     user2StartingBalance = await ethers.provider.getBalance(user2.address);
+
+    user3 = accounts[2];
+
     testBlindingFactor = ethers.utils.formatBytes32String("0x12");
+
+    yesChoiceBytes32 = ethers.utils.hexZeroPad(ethers.utils.hexlify(1), 32);
+    noChoiceBytes32 = ethers.utils.hexZeroPad(ethers.utils.hexlify(2), 32);
 
     // deploy mock price oracle and assign mock oracle address
     MockPriceOracle = await ethers.getContractFactory("MockPriceOracle");
@@ -86,8 +108,8 @@ describe("SecretPredictionMarket", () => {
 
     before(async () => {
       commitment = await ethers.utils.solidityKeccak256(
-        ["address", "uint256", "bytes32"],
-        [user1.address, 1, testBlindingFactor]
+        ["bytes32", "bytes32", "bytes32"],
+        [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
       );
     });
 
@@ -238,15 +260,6 @@ describe("SecretPredictionMarket", () => {
 
   describe("testHash", () => {
     it("should return keccak256 hash", async () => {
-      const choiceHexlify = ethers.utils.hexZeroPad(
-        ethers.utils.hexlify(1),
-        32
-      );
-      const addressHexlify = ethers.utils.hexZeroPad(
-        ethers.utils.hexlify(user1.address),
-        32
-      );
-
       const contractHashResult = await secretPredictionMarket.testHash(
         1,
         testBlindingFactor
@@ -254,7 +267,7 @@ describe("SecretPredictionMarket", () => {
 
       const ethersHashResult = await ethers.utils.solidityKeccak256(
         ["bytes32", "bytes32", "bytes32"],
-        [addressHexlify, choiceHexlify, testBlindingFactor]
+        [user1AddressBytes32, choiceBytes32, testBlindingFactor]
       );
 
       expect(contractHashResult).to.eq(ethersHashResult);
@@ -262,24 +275,14 @@ describe("SecretPredictionMarket", () => {
   });
 
   describe("revealChoice", () => {
-    let choice;
-    let addressHexlify;
-    let choiceHexlify;
     let commitment;
     let commitChoiceTransaction;
     let revealChoiceTransaction;
 
     before(async () => {
-      choice = 1;
-      addressHexlify = ethers.utils.hexZeroPad(
-        ethers.utils.hexlify(user1.address),
-        32
-      );
-      choiceHexlify = ethers.utils.hexZeroPad(ethers.utils.hexlify(1), 32);
-
       commitment = await ethers.utils.solidityKeccak256(
         ["bytes32", "bytes32", "bytes32"],
-        [addressHexlify, choiceHexlify, testBlindingFactor]
+        [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
       );
     });
 
@@ -363,10 +366,6 @@ describe("SecretPredictionMarket", () => {
     let choice;
     let yesCommitment;
     let noCommitment;
-    let user1AddressHexlify;
-    let user2AddressHexlify;
-    let yesChoiceHexlify;
-    let noChoiceHexlify;
 
     let yesCommitChoiceTransaction;
     let noCommitChoiceTransaction;
@@ -383,25 +382,14 @@ describe("SecretPredictionMarket", () => {
     let claimTransaction;
 
     before(async () => {
-      user1AddressHexlify = ethers.utils.hexZeroPad(
-        ethers.utils.hexlify(user1.address),
-        32
-      );
-      user2AddressHexlify = ethers.utils.hexZeroPad(
-        ethers.utils.hexlify(user2.address),
-        32
-      );
-      yesChoiceHexlify = ethers.utils.hexZeroPad(ethers.utils.hexlify(1), 32);
-      noChoiceHexlify = ethers.utils.hexZeroPad(ethers.utils.hexlify(2), 32);
-
       yesCommitment = await ethers.utils.solidityKeccak256(
         ["bytes32", "bytes32", "bytes32"],
-        [user1AddressHexlify, yesChoiceHexlify, testBlindingFactor]
+        [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
       );
 
       noCommitment = await ethers.utils.solidityKeccak256(
         ["bytes32", "bytes32", "bytes32"],
-        [user2AddressHexlify, noChoiceHexlify, testBlindingFactor]
+        [user2AddressBytes32, noChoiceBytes32, testBlindingFactor]
       );
 
       yesCommitChoiceTransaction = await secretPredictionMarket.commitChoice(

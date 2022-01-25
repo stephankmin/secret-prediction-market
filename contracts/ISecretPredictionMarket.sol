@@ -5,7 +5,11 @@ interface ISecretPredictionMarket {
         No
     }
 
-    function commitChoice(bytes32 commitment) external payable;
+    function commitChoice(
+        bytes32 commitment,
+        bytes memory signature,
+        address predictor
+    ) external payable;
 
     function revealChoice(Choice choice, bytes32 blindingFactor) external;
 

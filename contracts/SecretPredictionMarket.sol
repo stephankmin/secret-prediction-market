@@ -54,15 +54,17 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         payoutDeadline = _payoutDeadline;
     }
 
-    function getSigner(string memory a, bytes memory signature)
-        external
+    function recoverSigner(bytes32 commitment, bytes memory signature)
+        public
         view
         returns (address)
     {
-        bytes32 message = _prefixed(keccak256(abi.encode(a)));
+        bytes32 payloadHash = keccak256(abi.encode(commitment));
         (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
 
-        address recoveredSigner = ecrecover(message, v, r, s);
+        bytes32 messageHash = _prefixed(payloadHash);
+
+        address recoveredSigner = ecrecover(messageHash, v, r, s);
         console.log("recoveredSigner: ", recoveredSigner);
         console.log("msg.sender: ", msg.sender);
 
@@ -70,7 +72,10 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     function _prefixed(bytes32 hash) internal pure returns (bytes32) {
-        return keccak256(abi.encode("\x19Ethereum Signed Message:\n", hash));
+        return
+            keccak256(
+                abi.encodePacked("\x19Ethereum Signed Message:\n32", hash)
+            );
     }
 
     function splitSignature(bytes memory signature)
@@ -94,16 +99,6 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         }
 
         return (v, r, s);
-    }
-
-    function recoverSigner(bytes32 message, bytes memory signature)
-        internal
-        pure
-        returns (address)
-    {
-        (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
-
-        return ecrecover(message, v, r, s);
     }
 
     function commitChoice(

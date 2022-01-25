@@ -103,20 +103,44 @@ describe("SecretPredictionMarket", () => {
 
   describe("getSigner()", () => {
     let messageString;
-    let messageHash;
-    let messageHashBinary;
+    let messageCommitment;
+    let payload;
+    let payloadHash;
     let signature;
+    let sig;
 
     it("should return true", async () => {
       messageString = "hello";
-      messageHash = ethers.utils.solidityKeccak256(["string"], [messageString]);
-      messageHashBinary = ethers.utils.arrayify(messageHash);
-      signature = await user1.signMessage(messageHashBinary);
 
-      const getSignerTransaction = await secretPredictionMarket.getSigner(
-        messageString,
-        signature
+      messageCommitment = await ethers.utils.solidityKeccak256(
+        ["bytes32", "bytes32"],
+        [yesChoiceBytes32, testBlindingFactor]
       );
+
+      payload = ethers.utils.defaultAbiCoder.encode(
+        ["bytes32"],
+        [messageCommitment]
+      );
+      console.log("Payload:", payload);
+
+      payloadHash = ethers.utils.keccak256(payload);
+      console.log("PayloadHash:", payloadHash);
+
+      signature = await user1.signMessage(ethers.utils.arrayify(payloadHash));
+      sig = ethers.utils.splitSignature(signature);
+
+      console.log("Signature:", sig);
+
+      console.log(
+        "Recovered:",
+        ethers.utils.verifyMessage(ethers.utils.arrayify(payloadHash), sig)
+      );
+
+      const recoverSignerTransaction =
+        await secretPredictionMarket.recoverSigner(
+          messageCommitment,
+          signature
+        );
     });
   });
 });

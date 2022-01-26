@@ -205,7 +205,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         emit Reveal(predictor, prediction.choice);
     }
 
-    function claimWinnings() external {
+    function claimWinnings(address payable predictor) external {
         require(
             block.timestamp > revealDeadline,
             "Winnings can only be claimed after reveal deadline has passed"
@@ -213,10 +213,10 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
 
         require(block.timestamp < payoutDeadline, "Payout deadline has passed");
 
-        require(predictions[msg.sender].hasWon, "Invalid claim");
+        require(predictions[predictor].hasWon, "Invalid claim");
 
         require(
-            !predictions[msg.sender].hasClaimedWinnings,
+            !predictions[predictor].hasClaimedWinnings,
             "User has already claimed winnings"
         );
 
@@ -225,16 +225,16 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             totalPot = 0;
         }
 
-        Prediction memory prediction = predictions[msg.sender];
+        Prediction memory prediction = predictions[predictor];
         uint256 winnings = prediction.wager +
             (prediction.wager / winningPot) *
             losingPot;
 
         console.log("smart contract winnings: ", winnings);
 
-        (bool success, ) = msg.sender.call{value: winnings}("");
+        (bool success, ) = predictor.call{value: winnings}("");
         require(success);
 
-        emit Payout(msg.sender, winnings);
+        emit Payout(predictor, winnings);
     }
 }

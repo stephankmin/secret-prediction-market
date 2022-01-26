@@ -20,7 +20,6 @@ describe("SecretPredictionMarket", () => {
   // commitment inputs
   let yesEnumInt;
   let noEnumInt;
-  let testBlindingFactor;
 
   // timestamp of most recent block to help set deadlines
   let mostRecentBlockTimestamp;
@@ -75,8 +74,9 @@ describe("SecretPredictionMarket", () => {
 
     // deploy mock price oracle and assign mock oracle address
     MockPriceOracle = await ethers.getContractFactory("MockPriceOracle");
-    mockOracle = await MockPriceOracle.deploy();
+    mockOracle = await MockPriceOracle.connect(thirdParty).deploy();
     await mockOracle.deployed();
+
     priceOracleAddress = mockOracle.address;
 
     // retrieve timestamp of most recent block
@@ -105,7 +105,9 @@ describe("SecretPredictionMarket", () => {
     SecretPredictionMarket = await ethers.getContractFactory(
       "SecretPredictionMarket"
     );
-    secretPredictionMarket = await SecretPredictionMarket.deploy(
+    secretPredictionMarket = await SecretPredictionMarket.connect(
+      thirdParty
+    ).deploy(
       benchmarkPrice,
       fixedWager,
       commitDeadline,
@@ -416,9 +418,16 @@ describe("SecretPredictionMarket", () => {
   });
 
   describe("claimWinnings", () => {
-    let choice;
-    let yesCommitment;
-    let noCommitment;
+    let user1YesPayload;
+    let user2NoPayload;
+    let user1YesPayloadHash;
+    let user2NoPayloadHash;
+
+    let user1Signature;
+    let user2Signature;
+
+    let user1CommitChoiceTransaction;
+    let user2CommitChoiceTransaction;
 
     let winnings;
     let numWinningReveals;
@@ -426,28 +435,48 @@ describe("SecretPredictionMarket", () => {
 
     let reportEventOccured;
 
-    let yesReveal;
-    let noReveal;
-
-    let claimTransaction;
-
     before(async () => {
-      yesCommitChoiceTransaction = await secretPredictionMarket.commitChoice(
-        yesCommitment,
-        {
-          value: fixedWager,
-        }
+      user1YesPayload = ethers.utils.defaultAbiCoder.encode(
+        ["bytes32"],
+        [user1YesCommitment]
       );
-      await yesCommitChoiceTransaction.wait();
+      user1YesPayloadHash = ethers.utils.keccak256(user1YesPayload);
 
-      noCommitChoiceTransaction = await secretPredictionMarket
-        .connect(user2)
-        .commitChoice(noCommitment, { value: fixedWager });
-      await noCommitChoiceTransaction.wait();
+      user2NoPayload = ethers.utils.defaultAbiCoder.encode(
+        ["bytes32"],
+        [user2NoCommitment]
+      );
+      user2NoPayloadHash = ethers.utils.keccak256(user2NoPayload);
+
+      user1Signature = await user1.signMessage(
+        ethers.utils.arrayify(user1YesPayloadHash)
+      );
+      user2Signature = await user2.signMessage(
+        ethers.utils.arrayify(user2NoPayloadHash)
+      );
+
+      user1CommitChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .commitChoice(user1YesCommitment, user1Signature, user1.address, {
+          value: fixedWager,
+        });
+      await user1CommitChoiceTransaction.wait();
+
+      user2CommitChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .commitChoice(user2NoCommitment, user2Signature, user2.address, {
+          value: fixedWager,
+        });
+      await user2CommitChoiceTransaction.wait();
     });
 
     describe("when event occurs", () => {
       let beforePriceSetAboveBenchmarkSnapshotId;
+
+      let user1YesReveal;
+      let user2NoReveal;
+
+      let user1ClaimTransaction;
 
       before(async () => {
         beforePriceSetAboveBenchmarkSnapshotId = await ethers.provider.send(
@@ -460,21 +489,24 @@ describe("SecretPredictionMarket", () => {
         const setMockPrice = await mockOracle.setEthPrice(price);
         await setMockPrice.wait();
 
-        reportEventOccured = await secretPredictionMarket.reportEvent();
+        reportEventOccured = await secretPredictionMarket
+          .connect(thirdParty)
+          .reportEvent();
         await reportEventOccured.wait();
 
-        yesReveal = await secretPredictionMarket.revealChoice(
-          1,
-          testBlindingFactor
-        );
-        await yesReveal.wait();
+        user1YesReveal = await secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
+        await user1YesReveal.wait();
 
-        noReveal = await secretPredictionMarket
-          .connect(user2)
-          .revealChoice(2, testBlindingFactor);
-        await noReveal.wait();
+        user2NoReveal = await secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(noEnumInt, user2TestBlindingFactor, user2.address);
+        await user2NoReveal.wait();
 
-        numWinningReveals = await secretPredictionMarket.numOfWinningReveals();
+        numWinningReveals = await secretPredictionMarket
+          .connect(thirdParty)
+          .numOfWinningReveals();
 
         proportionOfWinningPot =
           ethers.BigNumber.from("1").div(numWinningReveals);
@@ -505,8 +537,10 @@ describe("SecretPredictionMarket", () => {
 
       describe("when player with 'Yes' reveal attempts to claim", () => {
         it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
-          claimTransaction = await secretPredictionMarket.claimWinnings();
-          await claimTransaction.wait();
+          user1ClaimTransaction = await secretPredictionMarket
+            .connect(thirdParty)
+            .claimWinnings(user1.address);
+          await user1ClaimTransaction.wait();
 
           const user1BalanceAfterWinnings = await ethers.provider.getBalance(
             user1.address
@@ -514,13 +548,12 @@ describe("SecretPredictionMarket", () => {
 
           const differenceInAddressBalances =
             user1BalanceAfterWinnings.sub(user1StartingBalance);
-          const expectedGains = winnings.sub(fixedWager);
 
-          expect(differenceInAddressBalances).to.eq(expectedGains);
+          expect(differenceInAddressBalances).to.eq(winnings);
         });
 
         it("should emit Payout event", async () => {
-          expect(claimTransaction)
+          expect(user1ClaimTransaction)
             .to.emit(secretPredictionMarket, "Payout")
             .withArgs(user1.address, winnings);
         });
@@ -529,7 +562,9 @@ describe("SecretPredictionMarket", () => {
       describe("when player with 'No' reveal attempts to claim", () => {
         it("should revert", async () => {
           await expect(
-            secretPredictionMarket.connect(user2).claimWinnings()
+            secretPredictionMarket
+              .connect(thirdParty)
+              .claimWinnings(user2.address)
           ).to.be.revertedWith("Invalid claim");
         });
       });
@@ -537,6 +572,11 @@ describe("SecretPredictionMarket", () => {
 
     describe("when event does not occur", () => {
       let beforePriceSetUnderBenchmarkSnapshotId;
+
+      let user1YesReveal;
+      let user2NoReveal;
+
+      let user2ClaimTransaction;
 
       before(async () => {
         beforePriceSetUnderBenchmarkSnapshotId = await ethers.provider.send(
@@ -549,21 +589,24 @@ describe("SecretPredictionMarket", () => {
         const setMockPrice = await mockOracle.setEthPrice(price);
         await setMockPrice.wait();
 
-        reportEventOccured = await secretPredictionMarket.reportEvent();
+        reportEventOccured = await secretPredictionMarket
+          .connect(thirdParty)
+          .reportEvent();
         await reportEventOccured.wait();
 
-        yesReveal = await secretPredictionMarket.revealChoice(
-          1,
-          testBlindingFactor
-        );
-        await yesReveal.wait();
+        user1YesReveal = await secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
+        await user1YesReveal.wait();
 
-        noReveal = await secretPredictionMarket
-          .connect(user2)
-          .revealChoice(2, testBlindingFactor);
-        await noReveal.wait();
+        user2NoReveal = await secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(noEnumInt, user2TestBlindingFactor, user2.address);
+        await user2NoReveal.wait();
 
-        numWinningReveals = await secretPredictionMarket.numOfWinningReveals();
+        numWinningReveals = await secretPredictionMarket
+          .connect(thirdParty)
+          .numOfWinningReveals();
 
         const proportionOfWinningPot =
           ethers.BigNumber.from("1").div(numWinningReveals);
@@ -594,17 +637,19 @@ describe("SecretPredictionMarket", () => {
       describe("when player with 'Yes' reveal attempts to claim", () => {
         it("should revert", async () => {
           await expect(
-            secretPredictionMarket.claimWinnings()
+            secretPredictionMarket
+              .connect(thirdParty)
+              .claimWinnings(user1.address)
           ).to.be.revertedWith("Invalid claim");
         });
       });
 
       describe("when player with 'No' reveal attempts to claim", () => {
         it("should pay out player's wager + (wager's proportion of winning pot * losing pot)", async () => {
-          claimTransaction = await secretPredictionMarket
-            .connect(user2)
-            .claimWinnings();
-          await claimTransaction.wait();
+          user2ClaimTransaction = await secretPredictionMarket
+            .connect(thirdParty)
+            .claimWinnings(user2.address);
+          await user2ClaimTransaction.wait();
 
           const user2BalanceAfterWinnings = await ethers.provider.getBalance(
             user2.address
@@ -612,15 +657,14 @@ describe("SecretPredictionMarket", () => {
 
           const differenceInAddressBalances =
             user2BalanceAfterWinnings.sub(user2StartingBalance);
-          const expectedGains = winnings.sub(fixedWager);
 
-          expect(differenceInAddressBalances).to.eq(expectedGains);
+          expect(differenceInAddressBalances).to.eq(winnings);
         });
 
-        it("should emit WinningsClaimed event", async () => {
-          expect(claimTransaction)
-            .to.emit(secretPredictionMarket, "WinningsClaimed")
-            .withArgs(choice, winnings);
+        it("should emit Payout event", async () => {
+          expect(user2ClaimTransaction)
+            .to.emit(secretPredictionMarket, "Payout")
+            .withArgs(user2.address, winnings);
         });
       });
     });

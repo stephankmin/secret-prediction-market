@@ -11,7 +11,11 @@ interface ISecretPredictionMarket {
         address predictor
     ) external payable;
 
-    function revealChoice(Choice choice, bytes32 blindingFactor) external;
+    function revealChoice(
+        Choice choice,
+        bytes32 blindingFactor,
+        address predictor
+    ) external;
 
     function reportEvent() external returns (bool);
 }

@@ -65,8 +65,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         bytes32 messageHash = _prefixed(payloadHash);
 
         address recoveredSigner = ecrecover(messageHash, v, r, s);
-        console.log("recoveredSigner: ", recoveredSigner);
-        console.log("msg.sender: ", msg.sender);
+        console.log(recoveredSigner);
 
         return recoveredSigner;
     }
@@ -118,11 +117,11 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             "Player's wager does not match fixed wager"
         );
 
-        bytes32 message = _prefixed(
-            keccak256(abi.encode(commitment, predictor))
+        require(
+            recoverSigner(commitment, signature) == predictor,
+            "Recovered signer does not match predictor"
         );
-
-        require(recoverSigner(message, signature) == predictor);
+        console.log(predictor);
 
         totalPot += msg.value;
 
@@ -158,11 +157,15 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         return eventHasOccurred;
     }
 
-    function revealChoice(Choice choice, bytes32 blindingFactor) external {
+    function revealChoice(
+        Choice choice,
+        bytes32 blindingFactor,
+        address predictor
+    ) external {
         require(block.timestamp < revealDeadline, "Reveal deadline has passed");
 
         require(
-            predictions[msg.sender].hasCommitted,
+            predictions[predictor].hasCommitted,
             "Player has no commit to reveal"
         );
 
@@ -172,14 +175,14 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         );
 
         require(
-            predictions[msg.sender].choice == Choice.Hidden,
+            predictions[predictor].choice == Choice.Hidden,
             "Commit has already been revealed"
         );
 
-        Prediction storage prediction = predictions[msg.sender];
+        Prediction storage prediction = predictions[predictor];
 
         require(
-            keccak256(abi.encode(msg.sender, choice, blindingFactor)) ==
+            keccak256(abi.encode(choice, blindingFactor)) ==
                 prediction.commitment,
             "Hash does not match commitment"
         );
@@ -199,7 +202,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             losingPot += prediction.wager;
         }
 
-        emit Reveal(msg.sender, prediction.choice);
+        emit Reveal(predictor, prediction.choice);
     }
 
     function claimWinnings() external {

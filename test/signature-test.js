@@ -102,7 +102,6 @@ describe("SecretPredictionMarket", () => {
   });
 
   describe("getSigner()", () => {
-    let messageString;
     let messageCommitment;
     let payload;
     let payloadHash;
@@ -110,11 +109,12 @@ describe("SecretPredictionMarket", () => {
     let sig;
 
     it("should return true", async () => {
-      messageString = "hello";
+      yesEnum = 1;
+      noEnum = 2;
 
       messageCommitment = await ethers.utils.solidityKeccak256(
-        ["bytes32", "bytes32"],
-        [yesChoiceBytes32, testBlindingFactor]
+        ["uint", "bytes32"],
+        [yesEnum, testBlindingFactor]
       );
 
       payload = ethers.utils.defaultAbiCoder.encode(

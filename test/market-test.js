@@ -13,13 +13,14 @@ describe("SecretPredictionMarket", () => {
   let user1StartingBalance;
   let user2;
   let user2StartingBalance;
-  let user3;
-  let testBlindingFactor;
 
-  let user1AddressBytes32;
-  let user2AddressBytes32;
-  let yesChoiceBytes32;
-  let noChoiceBytes32;
+  // pay for gas on behalf of predictors
+  let thirdParty;
+
+  // commitment inputs
+  let yesEnumInt;
+  let noEnumInt;
+  let testBlindingFactor;
 
   // timestamp of most recent block to help set deadlines
   let mostRecentBlockTimestamp;
@@ -37,25 +38,40 @@ describe("SecretPredictionMarket", () => {
     accounts = await ethers.getSigners();
 
     user1 = accounts[0];
-    user1AddressBytes32 = ethers.utils.hexZeroPad(
-      ethers.utils.hexlify(user1.address),
-      32
-    );
     user1StartingBalance = await ethers.provider.getBalance(user1.address);
 
     user2 = accounts[1];
-    user2AddressBytes32 = ethers.utils.hexZeroPad(
-      ethers.utils.hexlify(user2.address),
-      32
-    );
     user2StartingBalance = await ethers.provider.getBalance(user2.address);
 
-    user3 = accounts[2];
+    thirdParty = accounts[9];
 
-    testBlindingFactor = ethers.utils.formatBytes32String("0x12");
+    yesEnumInt = 1;
+    noEnumInt = 2;
 
-    yesChoiceBytes32 = ethers.utils.hexZeroPad(ethers.utils.hexlify(1), 32);
-    noChoiceBytes32 = ethers.utils.hexZeroPad(ethers.utils.hexlify(2), 32);
+    // test blinding factors for user1 and user2
+    user1TestBlindingFactor = ethers.utils.formatBytes32String("user1");
+    user2TestBlindingFactor = ethers.utils.formatBytes32String("user2");
+
+    // possible commitments for user1 and user2
+    user1YesCommitment = await ethers.utils.solidityKeccak256(
+      ["uint", "bytes32"],
+      [yesEnumInt, user1TestBlindingFactor]
+    );
+
+    user1NoCommitment = await ethers.utils.solidityKeccak256(
+      ["uint", "bytes32"],
+      [noEnumInt, user1TestBlindingFactor]
+    );
+
+    user2YesCommitment = await ethers.utils.solidityKeccak256(
+      ["uint", "bytes32"],
+      [yesEnumInt, user2TestBlindingFactor]
+    );
+
+    user2NoCommitment = await ethers.utils.solidityKeccak256(
+      ["uint", "bytes32"],
+      [noEnumInt, user2TestBlindingFactor]
+    );
 
     // deploy mock price oracle and assign mock oracle address
     MockPriceOracle = await ethers.getContractFactory("MockPriceOracle");
@@ -103,14 +119,19 @@ describe("SecretPredictionMarket", () => {
 
   describe("commitChoice", () => {
     let commitChoiceSnapshotId;
-    let commitment;
+    let payload;
+    let payloadHash;
+    let signature;
     let commitChoiceTransaction;
 
     before(async () => {
-      commitment = await ethers.utils.solidityKeccak256(
-        ["bytes32", "bytes32", "bytes32"],
-        [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
+      payload = ethers.utils.defaultAbiCoder.encode(
+        ["bytes32"],
+        [user1YesCommitment]
       );
+      payloadHash = ethers.utils.keccak256(payload);
+
+      signature = await user1.signMessage(ethers.utils.arrayify(payloadHash));
     });
 
     beforeEach(async () => {
@@ -126,19 +147,28 @@ describe("SecretPredictionMarket", () => {
       await network.provider.send("evm_mine");
 
       await expect(
-        secretPredictionMarket.commitChoice(commitment, { value: fixedWager })
+        secretPredictionMarket
+          .connect(thirdParty)
+          .commitChoice(user1YesCommitment, signature, user1.address, {
+            value: fixedWager,
+          })
       ).to.be.revertedWith("Commit deadline has passed");
     });
 
     it("should revert if user has already committed choice", async () => {
-      commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-        commitment,
-        { value: fixedWager }
-      );
+      commitChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .commitChoice(user1YesCommitment, signature, user1.address, {
+          value: fixedWager,
+        });
       await commitChoiceTransaction.wait();
 
       await expect(
-        secretPredictionMarket.commitChoice(commitment, { value: fixedWager })
+        secretPredictionMarket
+          .connect(thirdParty)
+          .commitChoice(user1YesCommitment, signature, user1.address, {
+            value: fixedWager,
+          })
       ).to.be.revertedWith("Player has already committed their choice");
     });
 
@@ -146,24 +176,27 @@ describe("SecretPredictionMarket", () => {
       const incorrectWager = ethers.utils.parseEther("2.0");
 
       await expect(
-        secretPredictionMarket.commitChoice(commitment, {
-          value: incorrectWager,
-        })
+        secretPredictionMarket
+          .connect(thirdParty)
+          .commitChoice(user1YesCommitment, signature, user1.address, {
+            value: incorrectWager,
+          })
       ).to.be.revertedWith("Player's wager does not match fixed wager");
     });
 
     it("should store PredictionCommit for player in players mapping", async () => {
-      commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-        commitment,
-        { value: fixedWager }
-      );
+      commitChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .commitChoice(user1YesCommitment, signature, user1.address, {
+          value: fixedWager,
+        });
       await commitChoiceTransaction.wait();
 
       const playerCommitStruct = await secretPredictionMarket.predictions(
         user1.address
       );
 
-      expect(playerCommitStruct["commitment"]).to.eq(commitment);
+      expect(playerCommitStruct["commitment"]).to.eq(user1YesCommitment);
 
       expect(playerCommitStruct["wager"]).to.eq(fixedWager);
 
@@ -171,10 +204,11 @@ describe("SecretPredictionMarket", () => {
     });
 
     it("should emit Commit event", async () => {
-      commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-        commitment,
-        { value: fixedWager }
-      );
+      commitChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .commitChoice(user1YesCommitment, signature, user1.address, {
+          value: fixedWager,
+        });
       await commitChoiceTransaction.wait();
 
       expect(commitChoiceTransaction)
@@ -258,41 +292,47 @@ describe("SecretPredictionMarket", () => {
     });
   });
 
-  describe("testHash", () => {
-    it("should return keccak256 hash", async () => {
-      const contractHashResult = await secretPredictionMarket.testHash(
-        1,
-        testBlindingFactor
-      );
+  // describe("testHash", () => {
+  //   it("should return keccak256 hash", async () => {
+  //     const contractHashResult = await secretPredictionMarket.testHash(
+  //       1,
+  //       testBlindingFactor
+  //     );
 
-      const ethersHashResult = await ethers.utils.solidityKeccak256(
-        ["bytes32", "bytes32", "bytes32"],
-        [user1AddressBytes32, choiceBytes32, testBlindingFactor]
-      );
+  //     const ethersHashResult = await ethers.utils.solidityKeccak256(
+  //       ["bytes32", "bytes32", "bytes32"],
+  //       [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
+  //     );
 
-      expect(contractHashResult).to.eq(ethersHashResult);
-    });
-  });
+  //     expect(contractHashResult).to.eq(ethersHashResult);
+  //   });
+  // });
 
   describe("revealChoice", () => {
-    let commitment;
+    let payload;
+    let payloadHash;
+    let signature;
     let commitChoiceTransaction;
     let revealChoiceTransaction;
 
     before(async () => {
-      commitment = await ethers.utils.solidityKeccak256(
-        ["bytes32", "bytes32", "bytes32"],
-        [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
+      payload = ethers.utils.defaultAbiCoder.encode(
+        ["bytes32"],
+        [user1YesCommitment]
       );
+      payloadHash = ethers.utils.keccak256(payload);
+
+      signature = await user1.signMessage(ethers.utils.arrayify(payloadHash));
     });
 
     beforeEach(async () => {
       snapshotId = await ethers.provider.send("evm_snapshot", []);
 
-      commitChoiceTransaction = await secretPredictionMarket.commitChoice(
-        commitment,
-        { value: fixedWager }
-      );
+      commitChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .commitChoice(user1YesCommitment, signature, user1.address, {
+          value: fixedWager,
+        });
       await commitChoiceTransaction.wait();
     });
 
@@ -305,60 +345,73 @@ describe("SecretPredictionMarket", () => {
       await network.provider.send("evm_mine");
 
       await expect(
-        secretPredictionMarket.revealChoice(choice, testBlindingFactor)
+        secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address)
       ).to.be.revertedWith("Reveal deadline has passed");
     });
 
     it("should revert if choice is not 'Yes' or 'No'", async () => {
       await expect(
-        secretPredictionMarket.revealChoice(0, testBlindingFactor)
+        secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(0, user1TestBlindingFactor, user1.address)
       ).to.be.revertedWith("Choice must be either 'Yes' or 'No");
     });
 
-    it("should revert if hash does not match commitment", async () => {
-      const wrongBlindingFactor = ethers.utils.formatBytes32String("0x34");
+    it("should revert if blinding factor is incorrect", async () => {
+      const wrongBlindingFactor = ethers.utils.formatBytes32String("wrong");
 
       await expect(
-        secretPredictionMarket.revealChoice(choice, wrongBlindingFactor)
+        secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(yesEnumInt, wrongBlindingFactor, user1.address)
+      ).to.be.revertedWith("Hash does not match commitment");
+    });
+
+    it("should revert if choice is incorrect", async () => {
+      await expect(
+        secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(noEnumInt, user1TestBlindingFactor, user1.address)
       ).to.be.revertedWith("Hash does not match commitment");
     });
 
     it("should revert if prediction has already been revealed", async () => {
-      revealChoiceTransaction = await secretPredictionMarket.revealChoice(
-        1,
-        testBlindingFactor
-      );
+      revealChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
       await revealChoiceTransaction.wait();
 
       await expect(
-        secretPredictionMarket.revealChoice(1, testBlindingFactor)
+        secretPredictionMarket
+          .connect(thirdParty)
+          .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address)
       ).to.be.revertedWith("Commit has already been revealed");
     });
 
     it("should update PredictionCommit in players mapping with revealed choice", async () => {
-      revealChoiceTransaction = await secretPredictionMarket.revealChoice(
-        choice,
-        testBlindingFactor
-      );
+      revealChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
       await revealChoiceTransaction.wait();
 
-      const playerCommitStruct = await secretPredictionMarket.predictions(
+      const user1PredictionStruct = await secretPredictionMarket.predictions(
         user1.address
       );
 
-      expect(playerCommitStruct["choice"]).to.eq(choice);
+      expect(user1PredictionStruct["choice"]).to.eq(yesEnumInt);
     });
 
     it("should emit Reveal event", async () => {
-      revealChoiceTransaction = await secretPredictionMarket.revealChoice(
-        choice,
-        testBlindingFactor
-      );
+      revealChoiceTransaction = await secretPredictionMarket
+        .connect(thirdParty)
+        .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
       await revealChoiceTransaction.wait();
 
       expect(revealChoiceTransaction)
         .to.emit(secretPredictionMarket, "Reveal")
-        .withArgs(user1.address, choice);
+        .withArgs(user1.address, yesEnumInt);
     });
   });
 
@@ -366,9 +419,6 @@ describe("SecretPredictionMarket", () => {
     let choice;
     let yesCommitment;
     let noCommitment;
-
-    let yesCommitChoiceTransaction;
-    let noCommitChoiceTransaction;
 
     let winnings;
     let numWinningReveals;
@@ -382,16 +432,6 @@ describe("SecretPredictionMarket", () => {
     let claimTransaction;
 
     before(async () => {
-      yesCommitment = await ethers.utils.solidityKeccak256(
-        ["bytes32", "bytes32", "bytes32"],
-        [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
-      );
-
-      noCommitment = await ethers.utils.solidityKeccak256(
-        ["bytes32", "bytes32", "bytes32"],
-        [user2AddressBytes32, noChoiceBytes32, testBlindingFactor]
-      );
-
       yesCommitChoiceTransaction = await secretPredictionMarket.commitChoice(
         yesCommitment,
         {

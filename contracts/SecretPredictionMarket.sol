@@ -54,8 +54,8 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     function recoverSigner(bytes32 commitment, bytes memory signature)
-        public
-        view
+        internal
+        pure
         returns (address)
     {
         bytes32 payloadHash = keccak256(abi.encode(commitment));

@@ -2,7 +2,6 @@ pragma solidity ^0.8.11;
 
 import "./ISecretPredictionMarket.sol";
 import "./PriceOracle.sol";
-import "hardhat/console.sol";
 
 contract SecretPredictionMarket is ISecretPredictionMarket {
     uint256 public totalPot;
@@ -65,7 +64,6 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         bytes32 messageHash = _prefixed(payloadHash);
 
         address recoveredSigner = ecrecover(messageHash, v, r, s);
-        console.log(recoveredSigner);
 
         return recoveredSigner;
     }
@@ -121,7 +119,6 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             recoverSigner(commitment, signature) == predictor,
             "Recovered signer does not match predictor"
         );
-        console.log(predictor);
 
         totalPot += msg.value;
 
@@ -134,14 +131,6 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             Choice.Hidden
         );
         emit Commit(predictor, msg.value);
-    }
-
-    function testHash(Choice choice, bytes32 blindingFactor)
-        external
-        view
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(msg.sender, choice, blindingFactor));
     }
 
     function reportEvent() external returns (bool) {
@@ -229,8 +218,6 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         uint256 winnings = prediction.wager +
             (prediction.wager / winningPot) *
             losingPot;
-
-        console.log("smart contract winnings: ", winnings);
 
         (bool success, ) = predictor.call{value: winnings}("");
         require(success);

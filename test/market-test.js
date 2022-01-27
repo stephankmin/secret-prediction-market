@@ -24,14 +24,14 @@ describe("SecretPredictionMarket", () => {
   // timestamp of most recent block to help set deadlines
   let mostRecentBlockTimestamp;
 
-  // constructor parameters
-  let benchmarkPrice;
+  // constructor parameters (deadlines are timestamps)
+  let benchmarkPrice; // will the price of the asset of interest exceed benchmarkPrice before eventDeadline?
   let fixedWager;
   let commitDeadline;
   let revealDeadline;
   let eventDeadline;
   let payoutDeadline;
-  let priceOracleAddress;
+  let priceOracleAddress; // address of price oracle contract corresponding to asset being wagered on
 
   before(async () => {
     accounts = await ethers.getSigners();
@@ -44,6 +44,7 @@ describe("SecretPredictionMarket", () => {
 
     thirdParty = accounts[9];
 
+    // int values for Yes and No in Choice enum
     yesEnumInt = 1;
     noEnumInt = 2;
 
@@ -293,22 +294,6 @@ describe("SecretPredictionMarket", () => {
       });
     });
   });
-
-  // describe("testHash", () => {
-  //   it("should return keccak256 hash", async () => {
-  //     const contractHashResult = await secretPredictionMarket.testHash(
-  //       1,
-  //       testBlindingFactor
-  //     );
-
-  //     const ethersHashResult = await ethers.utils.solidityKeccak256(
-  //       ["bytes32", "bytes32", "bytes32"],
-  //       [user1AddressBytes32, yesChoiceBytes32, testBlindingFactor]
-  //     );
-
-  //     expect(contractHashResult).to.eq(ethersHashResult);
-  //   });
-  // });
 
   describe("revealChoice", () => {
     let payload;

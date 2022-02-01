@@ -42,7 +42,7 @@ describe("SecretPredictionMarket", () => {
     user2 = accounts[1];
     user2StartingBalance = await ethers.provider.getBalance(user2.address);
 
-    thirdParty = accounts[9];
+    thirdParty = accounts[19];
 
     // int values for Yes and No in Choice enum
     yesEnumInt = 1;
@@ -420,39 +420,46 @@ describe("SecretPredictionMarket", () => {
 
     let reportEventOccured;
 
+    let blindingFactors = [];
+
     before(async () => {
-      user1YesPayload = ethers.utils.defaultAbiCoder.encode(
-        ["bytes32"],
-        [user1YesCommitment]
-      );
-      user1YesPayloadHash = ethers.utils.keccak256(user1YesPayload);
+      for (const a of accounts.slice(1, 11)) {
+        let commitment;
+        let payload;
+        let payloadHash;
+        let signature;
+        let commitChoiceTransaction;
 
-      user2NoPayload = ethers.utils.defaultAbiCoder.encode(
-        ["bytes32"],
-        [user2NoCommitment]
-      );
-      user2NoPayloadHash = ethers.utils.keccak256(user2NoPayload);
+        blindingFactors[a] = ethers.utils.formatBytes32String("user", a);
+        console.log("user", a, "blindingFactor: ", blindingFactors[a]);
 
-      user1Signature = await user1.signMessage(
-        ethers.utils.arrayify(user1YesPayloadHash)
-      );
-      user2Signature = await user2.signMessage(
-        ethers.utils.arrayify(user2NoPayloadHash)
-      );
+        if (a % 2 === 1) {
+          commitment = await ethers.utils.solidityKeccak256(
+            ["uint", "bytes32"],
+            [yesEnumInt, blindingFactors[a]]
+          );
+        } else {
+          commitment = await ethers.utils.solidityKeccak256(
+            ["uint", "bytes32"],
+            [noEnumInt, blindingFactors[a]]
+          );
+        }
 
-      user1CommitChoiceTransaction = await secretPredictionMarket
-        .connect(thirdParty)
-        .commitChoice(user1YesCommitment, user1Signature, user1.address, {
-          value: fixedWager,
-        });
-      await user1CommitChoiceTransaction.wait();
+        payload = ethers.utils.defaultAbiCoder.encode(
+          ["bytes32"],
+          [commitment]
+        );
+        payloadHash = ethers.utils.keccak256(payload);
 
-      user2CommitChoiceTransaction = await secretPredictionMarket
-        .connect(thirdParty)
-        .commitChoice(user2NoCommitment, user2Signature, user2.address, {
-          value: fixedWager,
-        });
-      await user2CommitChoiceTransaction.wait();
+        signature = await a.signMessage(ethers.utils.arrayify(payloadHash));
+
+        commitChoiceTransaction = await secretPredictionMarket
+          .connect(a)
+          .commitChoice(commitment, signature, a.address, {
+            value: fixedWager,
+          });
+        await commitChoiceTransaction.wait();
+      }
     });
 
     describe("when event occurs", () => {
@@ -479,15 +486,30 @@ describe("SecretPredictionMarket", () => {
           .reportEvent();
         await reportEventOccured.wait();
 
-        user1YesReveal = await secretPredictionMarket
-          .connect(thirdParty)
-          .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
-        await user1YesReveal.wait();
+        for (const a of accounts.splice(1, 11)) {
+          let reveal;
 
-        user2NoReveal = await secretPredictionMarket
-          .connect(thirdParty)
-          .revealChoice(noEnumInt, user2TestBlindingFactor, user2.address);
-        await user2NoReveal.wait();
+          if (a % 2 == 1) {
+            reveal = await secretPredictionMarket
+              .connect(thirdParty)
+              .revealChoice(yesEnumInt, blindingFactors[a], a.address);
+            await reveal.wait();
+          } else {
+            reveal = await secretPredictionMarket
+              .connect(thirdParty)
+              .revealChoice(noEnumInt, blindingFactors[a], a.address);
+          }
+        }
+
+        // user1YesReveal = await secretPredictionMarket
+        //   .connect(thirdParty)
+        //   .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
+        // await user1YesReveal.wait();
+
+        // user2NoReveal = await secretPredictionMarket
+        //   .connect(thirdParty)
+        //   .revealChoice(noEnumInt, user2TestBlindingFactor, user2.address);
+        // await user2NoReveal.wait();
 
         numWinningReveals = await secretPredictionMarket
           .connect(thirdParty)

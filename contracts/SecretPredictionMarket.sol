@@ -53,13 +53,16 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         payoutDeadline = _payoutDeadline;
     }
 
-    function recoverSigner(bytes32 commitment, bytes memory signature)
+    /// @notice Recovers address of signer given a commitment and signature
+    /// @param commitment Hash of Choice and blinding factor
+    /// @param signature Signature of predictor
+    function _recoverSigner(bytes32 commitment, bytes memory signature)
         internal
         pure
         returns (address)
     {
         bytes32 payloadHash = keccak256(abi.encode(commitment));
-        (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
+        (uint8 v, bytes32 r, bytes32 s) = _splitSignature(signature);
 
         bytes32 messageHash = _prefixed(payloadHash);
 
@@ -68,6 +71,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         return recoveredSigner;
     }
 
+    /// @notice Adds prefix to hash of commitment to create message hash
     function _prefixed(bytes32 hash) internal pure returns (bytes32) {
         return
             keccak256(
@@ -75,7 +79,8 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             );
     }
 
-    function splitSignature(bytes memory signature)
+    /// @notice Returns v,r,s values for given signature
+    function _splitSignature(bytes memory signature)
         internal
         pure
         returns (
@@ -98,6 +103,10 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         return (v, r, s);
     }
 
+    /// @notice Commits a choice for a given predictor
+    /// @param commitment Hash of choice and blinding factor
+    /// @param signature Signature signed by predictor
+    /// @param predictor Address of predictor committing choice
     function commitChoice(
         bytes32 commitment,
         bytes memory signature,
@@ -116,7 +125,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         );
 
         require(
-            recoverSigner(commitment, signature) == predictor,
+            _recoverSigner(commitment, signature) == predictor,
             "Recovered signer does not match predictor"
         );
 
@@ -133,6 +142,8 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         emit Commit(predictor, msg.value);
     }
 
+    /// @notice Retrieves price from priceOracle and compares it to benchmarkPrice to see if event has occurred
+    /// @return Boolean value showing if event has occurred
     function reportEvent() external returns (bool) {
         require(block.timestamp < eventDeadline, "Event deadline has passed");
 
@@ -146,6 +157,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         return eventHasOccurred;
     }
 
+    /// @notice Reveals choice of predictor given their choice and blinding factor
     function revealChoice(
         Choice choice,
         bytes32 blindingFactor,
@@ -194,6 +206,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         emit Reveal(predictor, prediction.choice);
     }
 
+    /// @notice Allows predictor to claim winnings once they have won
     function claimWinnings(address payable predictor) external {
         require(
             block.timestamp > revealDeadline,
@@ -220,7 +233,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
             losingPot;
 
         (bool success, ) = predictor.call{value: winnings}("");
-        require(success);
+        require(success, "Transaction failed");
 
         emit Payout(predictor, winnings);
     }

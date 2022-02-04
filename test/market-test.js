@@ -423,6 +423,8 @@ describe("SecretPredictionMarket", () => {
     let blindingFactors = [];
 
     before(async () => {
+      let numOfCommits;
+
       for (const a of accounts.slice(1, 11)) {
         let commitment;
         let payload;
@@ -430,10 +432,12 @@ describe("SecretPredictionMarket", () => {
         let signature;
         let commitChoiceTransaction;
 
-        blindingFactors[a] = ethers.utils.formatBytes32String("user", a);
-        console.log("user", a, "blindingFactor: ", blindingFactors[a]);
+        blindingFactors[a] = ethers.utils.formatBytes32String(
+          numOfCommits.toString()
+        );
+        console.log("blindingFactor: ", blindingFactors[a]);
 
-        if (a % 2 === 1) {
+        if (numOfCommits % 2 === 0) {
           commitment = await ethers.utils.solidityKeccak256(
             ["uint", "bytes32"],
             [yesEnumInt, blindingFactors[a]]
@@ -444,7 +448,7 @@ describe("SecretPredictionMarket", () => {
             [noEnumInt, blindingFactors[a]]
           );
         }
-
+        numOfCommits++;
         payload = ethers.utils.defaultAbiCoder.encode(
           ["bytes32"],
           [commitment]

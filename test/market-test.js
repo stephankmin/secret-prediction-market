@@ -403,49 +403,37 @@ describe("SecretPredictionMarket", () => {
   });
 
   describe("claimWinnings", () => {
-    let user1YesPayload;
-    let user2NoPayload;
-    let user1YesPayloadHash;
-    let user2NoPayloadHash;
-
-    let user1Signature;
-    let user2Signature;
-
-    let user1CommitChoiceTransaction;
-    let user2CommitChoiceTransaction;
-
     let winnings;
     let numWinningReveals;
     let losingPot;
-
     let reportEventOccured;
-
     let blindingFactors = [];
 
     before(async () => {
-      let numOfCommits;
+      let numOfCommits = 0;
 
-      for (const a of accounts.slice(1, 11)) {
+      for (let i = 0; i < accounts.length; i++) {
+        let user = accounts[i];
         let commitment;
         let payload;
         let payloadHash;
         let signature;
         let commitChoiceTransaction;
 
-        blindingFactors[a] = ethers.utils.formatBytes32String(
+        blindingFactors[user.address] = ethers.utils.formatBytes32String(
           numOfCommits.toString()
         );
-        console.log("blindingFactor: ", blindingFactors[a]);
+        console.log("user: ", i, "commit");
 
         if (numOfCommits % 2 === 0) {
           commitment = await ethers.utils.solidityKeccak256(
             ["uint", "bytes32"],
-            [yesEnumInt, blindingFactors[a]]
+            [yesEnumInt, blindingFactors[user.address]]
           );
         } else {
           commitment = await ethers.utils.solidityKeccak256(
             ["uint", "bytes32"],
-            [noEnumInt, blindingFactors[a]]
+            [noEnumInt, blindingFactors[user.address]]
           );
         }
         numOfCommits++;
@@ -455,11 +443,11 @@ describe("SecretPredictionMarket", () => {
         );
         payloadHash = ethers.utils.keccak256(payload);
 
-        signature = await a.signMessage(ethers.utils.arrayify(payloadHash));
+        signature = await user.signMessage(ethers.utils.arrayify(payloadHash));
 
         commitChoiceTransaction = await secretPredictionMarket
-          .connect(a)
-          .commitChoice(commitment, signature, a.address, {
+          .connect(user)
+          .commitChoice(commitment, signature, user.address, {
             value: fixedWager,
           });
         await commitChoiceTransaction.wait();
@@ -469,12 +457,9 @@ describe("SecretPredictionMarket", () => {
     describe("when event occurs", () => {
       let beforePriceSetAboveBenchmarkSnapshotId;
 
-      let user1YesReveal;
-      let user2NoReveal;
-
-      let user1ClaimTransaction;
-
       before(async () => {
+        let numOfCommits = 0;
+
         beforePriceSetAboveBenchmarkSnapshotId = await ethers.provider.send(
           "evm_snapshot",
           []
@@ -490,43 +475,57 @@ describe("SecretPredictionMarket", () => {
           .reportEvent();
         await reportEventOccured.wait();
 
-        for (const a of accounts.splice(1, 11)) {
+        for (let i = 0; i < accounts.length; i++) {
+          let user = accounts[i];
           let reveal;
+          console.log("user: ", i, "reveal");
 
-          if (a % 2 == 1) {
+          if (numOfCommits % 2 === 0) {
             reveal = await secretPredictionMarket
               .connect(thirdParty)
-              .revealChoice(yesEnumInt, blindingFactors[a], a.address);
-            await reveal.wait();
+              .revealChoice(
+                yesEnumInt,
+                blindingFactors[user.address],
+                user.address
+              );
+            console.log("win");
           } else {
             reveal = await secretPredictionMarket
               .connect(thirdParty)
-              .revealChoice(noEnumInt, blindingFactors[a], a.address);
+              .revealChoice(
+                noEnumInt,
+                blindingFactors[user.address],
+                user.address
+              );
+            console.log("lose");
           }
+          console.log(
+            "numWinningReveals: ",
+            await secretPredictionMarket.numOfWinningReveals()
+          );
+          console.log("totalPot: ", await secretPredictionMarket.totalPot());
+          console.log(
+            "winningPot: ",
+            await secretPredictionMarket.winningPot()
+          );
+          console.log("losingPot: ", await secretPredictionMarket.losingPot());
+          numOfCommits++;
         }
 
-        // user1YesReveal = await secretPredictionMarket
-        //   .connect(thirdParty)
-        //   .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
-        // await user1YesReveal.wait();
-
-        // user2NoReveal = await secretPredictionMarket
-        //   .connect(thirdParty)
-        //   .revealChoice(noEnumInt, user2TestBlindingFactor, user2.address);
-        // await user2NoReveal.wait();
-
-        numWinningReveals = await secretPredictionMarket
-          .connect(thirdParty)
-          .numOfWinningReveals();
+        numWinningReveals = await secretPredictionMarket.numOfWinningReveals();
+        console.log("numWinningReveals:", numWinningReveals);
 
         proportionOfWinningPot =
           ethers.BigNumber.from("1").div(numWinningReveals);
+        console.log("proportion of winning pot:", proportionOfWinningPot);
 
         losingPot = ethers.BigNumber.from(
           await secretPredictionMarket.losingPot()
         );
+        console.log("losing pot:", losingPot);
 
         winnings = fixedWager.add(proportionOfWinningPot.mul(losingPot));
+        console.log("winnings per winner:", winnings);
 
         // increase time to be between revealDeadline and payoutDeadline
         await network.provider.send("evm_increaseTime", [17500]);
@@ -584,19 +583,15 @@ describe("SecretPredictionMarket", () => {
     describe("when event does not occur", () => {
       let beforePriceSetUnderBenchmarkSnapshotId;
 
-      let user1YesReveal;
-      let user2NoReveal;
-
-      let user2ClaimTransaction;
-
       before(async () => {
+        let numOfCommits = 0;
+
         beforePriceSetUnderBenchmarkSnapshotId = await ethers.provider.send(
           "evm_snapshot",
           []
         );
 
         price = 4000;
-
         const setMockPrice = await mockOracle.setEthPrice(price);
         await setMockPrice.wait();
 
@@ -605,15 +600,43 @@ describe("SecretPredictionMarket", () => {
           .reportEvent();
         await reportEventOccured.wait();
 
-        user1YesReveal = await secretPredictionMarket
-          .connect(thirdParty)
-          .revealChoice(yesEnumInt, user1TestBlindingFactor, user1.address);
-        await user1YesReveal.wait();
+        for (let i = 0; i < accounts.length; i++) {
+          let user = accounts[i];
+          let reveal;
+          console.log("user: ", i, "reveal");
+          console.log("numOfCommits: ", numOfCommits);
 
-        user2NoReveal = await secretPredictionMarket
-          .connect(thirdParty)
-          .revealChoice(noEnumInt, user2TestBlindingFactor, user2.address);
-        await user2NoReveal.wait();
+          if (numOfCommits % 2 === 0) {
+            reveal = await secretPredictionMarket
+              .connect(thirdParty)
+              .revealChoice(
+                yesEnumInt,
+                blindingFactors[user.address],
+                user.address
+              );
+            console.log("lose");
+          } else {
+            reveal = await secretPredictionMarket
+              .connect(thirdParty)
+              .revealChoice(
+                noEnumInt,
+                blindingFactors[user.address],
+                user.address
+              );
+            console.log("win");
+          }
+          console.log(
+            "numWinningReveals: ",
+            await secretPredictionMarket.numOfWinningReveals()
+          );
+          console.log("totalPot: ", await secretPredictionMarket.totalPot());
+          console.log(
+            "winningPot: ",
+            await secretPredictionMarket.winningPot()
+          );
+          console.log("losingPot: ", await secretPredictionMarket.losingPot());
+          numOfCommits++;
+        }
 
         numWinningReveals = await secretPredictionMarket
           .connect(thirdParty)

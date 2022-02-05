@@ -2,6 +2,7 @@ pragma solidity ^0.8.11;
 
 import "./ISecretPredictionMarket.sol";
 import "./PriceOracle.sol";
+import "hardhat/console.sol";
 
 contract SecretPredictionMarket is ISecretPredictionMarket {
     uint256 public totalPot;
@@ -231,6 +232,11 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         uint256 winnings = prediction.wager +
             (prediction.wager / winningPot) *
             losingPot;
+        console.log(prediction.wager);
+        console.log(prediction.wager / winningPot);
+        console.log(winningPot);
+        console.log(losingPot);
+        console.log(winnings);
 
         (bool success, ) = predictor.call{value: winnings}("");
         require(success, "Transaction failed");

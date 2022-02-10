@@ -10,12 +10,12 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     uint256 public losingPot;
     uint256 public numOfWinningReveals;
 
-    int256 public immutable benchmarkPrice;
+    int256 public immutable benchmarkPrice; // price that must be exceeded before eventDeadline in order for event to occur
     uint256 public immutable fixedWager;
-    uint256 public immutable commitDeadline;
-    uint256 public immutable eventDeadline;
-    uint256 public immutable revealDeadline;
-    uint256 public immutable payoutDeadline;
+    uint256 public immutable commitDeadline; // deadline for user to commit choice
+    uint256 public immutable eventDeadline; // deadline for benchmarkPrice to be exceeded
+    uint256 public immutable revealDeadline; // deadline for user to reveal choice. unrevealed commitments are treated as losses
+    uint256 public immutable payoutDeadline; // deadline to claim winnings
     PriceOracle public immutable priceOracle;
 
     bool public eventHasOccurred;
@@ -43,7 +43,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
         uint256 _revealDeadline,
         uint256 _eventDeadline,
         uint256 _payoutDeadline,
-        address _priceOracleAddress
+        address _priceOracleAddress // price oracle address of asset being wagered on. as of now, contract only supports chainlink price oracles
     ) {
         benchmarkPrice = _benchmarkPrice;
         priceOracle = PriceOracle(_priceOracleAddress);
@@ -144,7 +144,7 @@ contract SecretPredictionMarket is ISecretPredictionMarket {
     }
 
     /// @notice Retrieves price from priceOracle and compares it to benchmarkPrice to see if event has occurred
-    /// @return Boolean value showing if event has occurred
+    /// @return Boolean value representing event occurrence
     function reportEvent() external returns (bool) {
         require(block.timestamp < eventDeadline, "Event deadline has passed");
 

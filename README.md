@@ -1,15 +1,7 @@
-# Basic Sample Hardhat Project
+# Secret Prediction Market
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, a sample script that deploys that contract, and an example of a task implementation, which simply lists the available accounts.
+Protocol for a "secret" prediction market centered on the price movement of on-chain assets, with wagers concealed using a commitment scheme. Events being wagered on are structured as: will the asset exceed `benchmarkPrice` at any point before `eventDeadline`?
 
-Try running some of the following tasks:
+Users can create a commitment using either a Yes or No choice and a blinding factor. Once the `eventDeadline` has passed, users can reveal their winning commitments in order to claim their winnings.
 
-```shell
-npx hardhat accounts
-npx hardhat compile
-npx hardhat clean
-npx hardhat test
-npx hardhat node
-node scripts/sample-script.js
-npx hardhat help
-```
+Winnings are calculated as a user's original wager, plus the losing pot multiplied by the proportion of the user's wager in the winning pot.
